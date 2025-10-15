@@ -23,6 +23,7 @@ use vulkano::{
         layout::PipelineLayout,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    shader::EntryPoint,
     swapchain::{
         Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo,
         acquire_next_image,
@@ -50,99 +51,22 @@ impl WindowDependentContext {
         let surface = Surface::from_window(instance.clone(), window.clone()).unwrap();
         let window_size = window.inner_size();
 
-        let (swapchain, images) = {
-            let surface_capabilities = device
-                .physical_device()
-                .surface_capabilities(&surface, Default::default())
-                .unwrap();
-            let (image_format, _) = device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0];
-
-            Swapchain::new(
-                device.clone(),
-                surface.clone(),
-                SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count.max(2),
-                    image_format,
-                    image_extent: window_size.into(),
-                    image_usage: ImageUsage::COLOR_ATTACHMENT,
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .into_iter()
-                        .next()
-                        .unwrap(),
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        };
+        let (swapchain, images) =
+            Self::create_first_swapchain(device.clone(), surface, window_size);
 
         let render_pass = Self::create_render_pass(device.clone(), swapchain.clone());
-        let vs = vs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
-        let fs = fs::load(device.clone())
-            .unwrap()
-            .entry_point("main")
-            .unwrap();
 
-        let viewport = Viewport {
-            offset: [0.0, 0.0],
-            extent: window_size.into(),
-            depth_range: 0.0..=1.0,
-        };
+        let (vertex_shader, fragment_shader) = Self::prepare_shaders(device.clone());
+
+        let viewport = Self::create_viewport(window_size);
 
         let framebuffers = Self::create_frame_buffers(images, render_pass.clone());
 
         use vulkano::sync;
         let previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-        let pipeline = {
-            let vertex_input_state = [Position::per_vertex()].definition(&vs).unwrap();
-
-            let stages = [
-                PipelineShaderStageCreateInfo::new(vs.clone()),
-                PipelineShaderStageCreateInfo::new(fs.clone()),
-            ]
-            .to_vec()
-            .into();
-
-            let layout = PipelineLayout::new(device.clone(), Default::default()).unwrap();
-            let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-
-            GraphicsPipeline::new(
-                device.clone(),
-                None,
-                GraphicsPipelineCreateInfo {
-                    flags: PipelineCreateFlags::default(),
-                    stages,
-                    vertex_input_state: Some(vertex_input_state),
-                    input_assembly_state: Some(InputAssemblyState {
-                        topology: PrimitiveTopology::TriangleList,
-                        ..Default::default()
-                    }),
-                    rasterization_state: Some(RasterizationState::default()),
-                    subpass: Some((subpass).into()),
-                    base_pipeline: None,
-                    viewport_state: Some(ViewportState::default()),
-                    tessellation_state: None,
-                    depth_stencil_state: None,
-                    multisample_state: Some(MultisampleState::default()),
-                    color_blend_state: Some(ColorBlendState::with_attachment_states(
-                        1,
-                        ColorBlendAttachmentState::default(),
-                    )),
-                    dynamic_state: [DynamicState::Viewport].into_iter().collect(),
-                    fragment_shading_rate_state: None,
-                    discard_rectangle_state: None,
-                    ..GraphicsPipelineCreateInfo::layout(layout)
-                },
-            )
-            .unwrap()
-        };
+        let pipeline =
+            Self::create_pipeline(vertex_shader, fragment_shader, device, render_pass.clone());
 
         Self {
             window,
@@ -322,6 +246,108 @@ impl WindowDependentContext {
             Err(e) => {
                 panic!("failed to flush future: {e}");
             }
+        }
+    }
+
+    fn create_first_swapchain(
+        device: Arc<Device>,
+        surface: Arc<Surface>,
+        window_size: PhysicalSize<u32>,
+    ) -> (Arc<Swapchain>, Vec<Arc<Image>>) {
+        let surface_capabilities = device
+            .physical_device()
+            .surface_capabilities(&surface, Default::default())
+            .unwrap();
+        let (image_format, _) = device
+            .physical_device()
+            .surface_formats(&surface, Default::default())
+            .unwrap()[0];
+
+        Swapchain::new(
+            device,
+            surface,
+            SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count.max(2),
+                image_format,
+                image_extent: window_size.into(),
+                image_usage: ImageUsage::COLOR_ATTACHMENT,
+                composite_alpha: surface_capabilities
+                    .supported_composite_alpha
+                    .into_iter()
+                    .next()
+                    .unwrap(),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    fn create_pipeline(
+        vs: EntryPoint,
+        fs: EntryPoint,
+        device: Arc<Device>,
+        render_pass: Arc<RenderPass>,
+    ) -> Arc<GraphicsPipeline> {
+        let vertex_input_state = [Position::per_vertex()].definition(&vs).unwrap();
+
+        let stages = [
+            PipelineShaderStageCreateInfo::new(vs.clone()),
+            PipelineShaderStageCreateInfo::new(fs.clone()),
+        ]
+        .to_vec()
+        .into();
+
+        let layout = PipelineLayout::new(device.clone(), Default::default()).unwrap();
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+
+        GraphicsPipeline::new(
+            device.clone(),
+            None,
+            GraphicsPipelineCreateInfo {
+                flags: PipelineCreateFlags::default(),
+                stages,
+                vertex_input_state: Some(vertex_input_state),
+                input_assembly_state: Some(InputAssemblyState {
+                    topology: PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                }),
+                rasterization_state: Some(RasterizationState::default()),
+                subpass: Some((subpass).into()),
+                base_pipeline: None,
+                viewport_state: Some(ViewportState::default()),
+                tessellation_state: None,
+                depth_stencil_state: None,
+                multisample_state: Some(MultisampleState::default()),
+                color_blend_state: Some(ColorBlendState::with_attachment_states(
+                    1,
+                    ColorBlendAttachmentState::default(),
+                )),
+                dynamic_state: [DynamicState::Viewport].into_iter().collect(),
+                fragment_shading_rate_state: None,
+                discard_rectangle_state: None,
+                ..GraphicsPipelineCreateInfo::layout(layout)
+            },
+        )
+        .unwrap()
+    }
+
+    fn prepare_shaders(device: Arc<Device>) -> (EntryPoint, EntryPoint) {
+        let vs = vs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        let fs = fs::load(device.clone())
+            .unwrap()
+            .entry_point("main")
+            .unwrap();
+        (vs, fs)
+    }
+
+    fn create_viewport(window_size: PhysicalSize<u32>) -> Viewport {
+        Viewport {
+            offset: [0.0, 0.0],
+            extent: window_size.into(),
+            depth_range: 0.0..=1.0,
         }
     }
 

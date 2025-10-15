@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
 
@@ -58,6 +59,17 @@ impl ApplicationHandler for App {
 
                 WindowEvent::RedrawRequested => {
                     render_context.draw();
+                }
+                
+                WindowEvent::KeyboardInput { 
+                    event: KeyEvent {
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                    ..
+                } => {
+                    event_loop.exit();
                 }
                 _ => {}
             }
