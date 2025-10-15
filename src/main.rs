@@ -11,6 +11,7 @@ use winit::{
 mod model;
 
 mod render_context;
+mod window_context;
 use render_context::RenderContext;
 
 struct App {
@@ -36,9 +37,7 @@ impl ApplicationHandler for App {
                 .unwrap(),
         );
 
-        let window_clone = window.clone();
         self.rcx.as_mut().unwrap().resumed(window);
-        window_clone.request_redraw();
     }
 
     fn window_event(
