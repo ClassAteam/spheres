@@ -187,4 +187,14 @@ impl RenderContext {
             .window
             .request_redraw();
     }
+
+    pub fn rotate_up(&mut self) {
+        self.window_context.as_mut().unwrap().change_angle_up();
+        self.request_redraw();
+    }
+
+    pub fn rotate_down(&mut self) {
+        self.window_context.as_mut().unwrap().change_angle_down();
+        self.request_redraw();
+    }
 }

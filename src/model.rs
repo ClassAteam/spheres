@@ -9,12 +9,12 @@ pub struct Position {
 
 pub const TEST_TRIANGLE: [Position; 3] = [
     Position {
-        position: [0.0, 0.5, 0.0],
-    }, // Top
+        position: [-0.5, 0.5, 0.0],
+    },
     Position {
-        position: [-0.5, -0.5, 0.0],
-    }, // Bottom-left
+        position: [0.5, 0.5, 0.0],
+    },
     Position {
-        position: [0.5, -0.5, 0.0],
-    }, // Bottom-right
+        position: [0.0, -0.5, 0.0],
+    },
 ];

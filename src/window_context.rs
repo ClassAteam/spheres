@@ -10,7 +10,8 @@ use vulkano::{
     image::{Image, ImageUsage, view::ImageView},
     instance::Instance,
     pipeline::{
-        DynamicState, GraphicsPipeline, PipelineCreateFlags, PipelineShaderStageCreateInfo,
+        DynamicState, GraphicsPipeline, Pipeline, PipelineCreateFlags,
+        PipelineShaderStageCreateInfo,
         graphics::{
             GraphicsPipelineCreateInfo,
             color_blend::{ColorBlendAttachmentState, ColorBlendState},
@@ -20,10 +21,10 @@ use vulkano::{
             vertex_input::{Vertex, VertexDefinition},
             viewport::{Viewport, ViewportState},
         },
-        layout::PipelineLayout,
+        layout::{PipelineLayout, PushConstantRange},
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    shader::EntryPoint,
+    shader::{EntryPoint, ShaderStages},
     swapchain::{
         Surface, Swapchain, SwapchainAcquireFuture, SwapchainCreateInfo, SwapchainPresentInfo,
         acquire_next_image,
@@ -33,6 +34,7 @@ use vulkano::{
 
 use winit::{dpi::PhysicalSize, window::Window};
 
+use crate::control::Control;
 use crate::model::Position;
 
 pub struct WindowDependentContext {
@@ -44,6 +46,7 @@ pub struct WindowDependentContext {
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     viewport: Viewport,
     recreate_swapchain: bool,
+    control: Control,
 }
 
 impl WindowDependentContext {
@@ -77,6 +80,7 @@ impl WindowDependentContext {
             previous_frame_end,
             viewport,
             recreate_swapchain: false,
+            control: Control::new(),
         }
     }
 
@@ -159,7 +163,7 @@ impl WindowDependentContext {
 
         self.render_pass = Self::create_render_pass(device.clone(), self.swapchain.clone());
 
-        self.viewport.extent = window_size.into();
+        self.viewport = Self::create_viewport(window_size);
 
         self.recreate_swapchain = false;
 
@@ -208,6 +212,12 @@ impl WindowDependentContext {
 
         builder
             .bind_pipeline_graphics(self.pipeline.clone())
+            .unwrap()
+            .push_constants(
+                self.pipeline.layout().clone(),
+                0,
+                self.control.rotation_angle,
+            )
             .unwrap()
             .bind_vertex_buffers(0, vertex_buffer.clone())
             .unwrap();
@@ -297,7 +307,20 @@ impl WindowDependentContext {
         .to_vec()
         .into();
 
-        let layout = PipelineLayout::new(device.clone(), Default::default()).unwrap();
+        let push_constant_range = PushConstantRange {
+            stages: ShaderStages::VERTEX,
+            offset: 0,
+            size: std::mem::size_of::<f32>() as u32,
+        };
+
+        let layout = PipelineLayout::new(
+            device.clone(),
+            vulkano::pipeline::layout::PipelineLayoutCreateInfo {
+                push_constant_ranges: vec![push_constant_range],
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
 
         GraphicsPipeline::new(
@@ -344,15 +367,25 @@ impl WindowDependentContext {
     }
 
     fn create_viewport(window_size: PhysicalSize<u32>) -> Viewport {
+        let width = window_size.width as f32;
+        let height = window_size.height as f32;
         Viewport {
             offset: [0.0, 0.0],
-            extent: window_size.into(),
+            extent: [width, height],
             depth_range: 0.0..=1.0,
         }
     }
 
     pub fn swapchain_recreation_needed(&mut self) {
         self.recreate_swapchain = true;
+    }
+
+    pub fn change_angle_up(&mut self) {
+        self.control.rotate_up();
+    }
+
+    pub fn change_angle_down(&mut self) {
+        self.control.rotate_down();
     }
 }
 

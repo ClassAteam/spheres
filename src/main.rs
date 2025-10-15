@@ -11,6 +11,7 @@ use winit::{
 
 mod model;
 
+mod control;
 mod render_context;
 mod window_context;
 use render_context::RenderContext;
@@ -60,25 +61,50 @@ impl ApplicationHandler for App {
                 WindowEvent::RedrawRequested => {
                     render_context.draw();
                 }
-                
-                WindowEvent::KeyboardInput { 
-                    event: KeyEvent {
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                        state: ElementState::Pressed,
-                        ..
-                    },
+
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::Escape),
+                            state: ElementState::Pressed,
+                            ..
+                        },
                     ..
                 } => {
                     event_loop.exit();
+                }
+
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::ArrowRight),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => {
+                    self.rcx.as_mut().unwrap().rotate_up();
+                }
+
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::ArrowLeft),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => {
+                    self.rcx.as_mut().unwrap().rotate_down();
                 }
                 _ => {}
             }
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        self.rcx.as_mut().unwrap().request_redraw();
-    }
+    // fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    //     self.rcx.as_mut().unwrap().request_redraw();
+    // }
 }
 
 fn main() -> Result<(), impl Error> {
