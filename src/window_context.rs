@@ -210,13 +210,16 @@ impl WindowDependentContext {
             .set_viewport(0, [self.viewport.clone()].into_iter().collect())
             .unwrap();
 
+        let aspect_ratio = self.viewport.extent[0] / self.viewport.extent[1];
+        let push_constants = [self.control.rotation_angle, aspect_ratio];
+        
         builder
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
             .push_constants(
                 self.pipeline.layout().clone(),
                 0,
-                self.control.rotation_angle,
+                push_constants,
             )
             .unwrap()
             .bind_vertex_buffers(0, vertex_buffer.clone())
@@ -310,7 +313,7 @@ impl WindowDependentContext {
         let push_constant_range = PushConstantRange {
             stages: ShaderStages::VERTEX,
             offset: 0,
-            size: std::mem::size_of::<f32>() as u32,
+            size: (std::mem::size_of::<f32>() * 2) as u32, // rotation_angle + aspect_ratio
         };
 
         let layout = PipelineLayout::new(
@@ -331,7 +334,7 @@ impl WindowDependentContext {
                 stages,
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::TriangleList,
+                    topology: PrimitiveTopology::LineList,
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),

@@ -7,14 +7,27 @@ pub struct Position {
     position: [f32; 3],
 }
 
-pub const TEST_TRIANGLE: [Position; 3] = [
+pub const TEST_TRIANGLE: [Position; 4] = [
+    // Position {
+    //     position: [-0.1, 0.1, 0.0],
+    // },
+    // Position {
+    //     position: [0.1, 0.1, 0.0],
+    // },
+    // Position {
+    //     position: [0.0, -0.1, 0.0],
+    // },
+    // Rectangle frame (static) - as line strip
     Position {
-        position: [-0.5, 0.5, 0.0],
+        position: [-0.2, 0.2, 0.0],
     },
     Position {
-        position: [0.5, 0.5, 0.0],
+        position: [0.2, 0.2, 0.0],
     },
     Position {
-        position: [0.0, -0.5, 0.0],
+        position: [0.2, -0.2, 0.0],
+    },
+    Position {
+        position: [-0.2, -0.2, 0.0],
     },
 ];
