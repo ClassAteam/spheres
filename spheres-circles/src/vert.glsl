@@ -10,18 +10,17 @@ layout(push_constant) uniform PushConstants {
 void main() {
     // Generate a single circle for now
     float angle = 2.0 * 3.14159265359 * float(gl_VertexIndex) / pc.segments_per_circle;
-    
-    // Add rotation
-    float rotated_angle = angle + pc.rotation_angle;
-    
-    // Generate circle position  
-    vec2 pos = vec2(
-        pc.circle_radius * cos(rotated_angle),
-        pc.circle_radius * sin(rotated_angle)
-    );
-    
-    // Apply aspect ratio correction
-    pos.x /= pc.aspect_ratio;
-    
-    gl_Position = vec4(pos, 0.0, 1.0);
+     if (gl_VertexIndex == 0) {
+          // Center vertex
+          gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+      } else {
+          // Circumference vertices (1, 2, 3, ...)
+          float angle = 2.0 * 3.14159 * float(gl_VertexIndex - 1) / (pc.segments_per_circle - 1);
+          vec2 pos = vec2(
+              pc.circle_radius * cos(angle + pc.rotation_angle),
+              pc.circle_radius * sin(angle + pc.rotation_angle)
+          );
+          pos.x /= pc.aspect_ratio;
+          gl_Position = vec4(pos, 0.0, 1.0);
+      }   
 }

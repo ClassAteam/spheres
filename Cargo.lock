@@ -1283,16 +1283,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spheres-lines"
-version = "0.1.0"
-dependencies = [
- "vulkano",
- "vulkano-macros",
- "vulkano-shaders",
- "winit",
-]
-
-[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -34,7 +34,6 @@ use vulkano::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::control::Control;
-use crate::model::CircleParams;
 
 pub struct WindowDependentContext {
     pub window: Arc<Window>,
@@ -46,7 +45,6 @@ pub struct WindowDependentContext {
     viewport: Viewport,
     recreate_swapchain: bool,
     control: Control,
-    circle_params: CircleParams,
 }
 
 impl WindowDependentContext {
@@ -81,7 +79,6 @@ impl WindowDependentContext {
             viewport,
             recreate_swapchain: false,
             control: Control::new(),
-            circle_params: CircleParams::default(),
         }
     }
 
@@ -211,24 +208,20 @@ impl WindowDependentContext {
 
         let aspect_ratio = self.viewport.extent[0] / self.viewport.extent[1];
         let push_constants = [
-            self.control.rotation_angle, 
+            self.control.rotation_angle,
             aspect_ratio,
-            self.circle_params.radius,
-            self.circle_params.segments as f32,
+            self.control.circle_params.radius,
+            self.control.circle_params.segments as f32,
         ];
-        
+
         builder
             .bind_pipeline_graphics(self.pipeline.clone())
             .unwrap()
-            .push_constants(
-                self.pipeline.layout().clone(),
-                0,
-                push_constants,
-            )
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
 
         // Draw a single circle for now (one circle worth of vertices)
-        unsafe { builder.draw(self.circle_params.segments as u32, 1, 0, 0) }.unwrap();
+        unsafe { builder.draw(self.control.circle_params.segments as u32 + 1, 1, 0, 0) }.unwrap();
 
         builder.end_render_pass(Default::default()).unwrap();
 
@@ -337,7 +330,7 @@ impl WindowDependentContext {
                 stages,
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::LineStrip,
+                    topology: PrimitiveTopology::LineList,
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),

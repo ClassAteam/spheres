@@ -1,11 +1,19 @@
+use crate::model::CircleParams;
+
 pub struct Control {
     pub rotation_angle: f32,
+    pub circle_params: CircleParams,
 }
 
 impl Control {
     pub fn new() -> Self {
         Control {
             rotation_angle: 0.0,
+            circle_params: CircleParams {
+                radius: (0.3),
+                segments: (128),
+                circle_count: (2),
+            },
         }
     }
 

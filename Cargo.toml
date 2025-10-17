@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "spheres-lines",
     "spheres-circles"
 ]
 resolver = "2"
