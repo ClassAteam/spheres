@@ -12,7 +12,6 @@ impl Control {
             circle_params: CircleParams {
                 radius: (0.3),
                 segments: (128),
-                circle_count: (2),
             },
         }
     }

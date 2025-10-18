@@ -330,7 +330,7 @@ impl WindowDependentContext {
                 stages,
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::LineList,
+                    topology: PrimitiveTopology::TriangleFan,
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),
