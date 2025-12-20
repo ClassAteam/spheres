@@ -77,7 +77,7 @@ impl ApplicationHandler for App {
                 WindowEvent::KeyboardInput {
                     event:
                         KeyEvent {
-                            physical_key: PhysicalKey::Code(KeyCode::ArrowRight),
+                            physical_key: PhysicalKey::Code(KeyCode::KeyW),
                             state: ElementState::Pressed,
                             ..
                         },
@@ -96,6 +96,30 @@ impl ApplicationHandler for App {
                     ..
                 } => {
                     self.rcx.as_mut().unwrap().rotate_down();
+                }
+
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::KeyA),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => {
+                    self.rcx.as_mut().unwrap().rotate_left();
+                }
+
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            physical_key: PhysicalKey::Code(KeyCode::KeyD),
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                } => {
+                    self.rcx.as_mut().unwrap().rotate_right();
                 }
                 _ => {}
             }

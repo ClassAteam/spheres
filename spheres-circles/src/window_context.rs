@@ -206,12 +206,13 @@ impl WindowDependentContext {
             .set_viewport(0, [self.viewport.clone()].into_iter().collect())
             .unwrap();
 
-        let aspect_ratio = self.viewport.extent[0] / self.viewport.extent[1];
         let push_constants = [
-            self.control.rotation_angle,
-            aspect_ratio,
-            self.control.circle_params.radius,
-            self.control.circle_params.segments as f32,
+            self.control.rotation_x,
+            self.control.rotation_y,
+            self.control.rotation_z,
+            self.control.sphere_params.radius,
+            self.control.sphere_params.segments as f32,
+            self.control.sphere_params.rings as f32,
         ];
 
         builder
@@ -220,8 +221,8 @@ impl WindowDependentContext {
             .push_constants(self.pipeline.layout().clone(), 0, push_constants)
             .unwrap();
 
-        // Draw a single circle for now (one circle worth of vertices)
-        unsafe { builder.draw(self.control.circle_params.segments as u32 + 1, 1, 0, 0) }.unwrap();
+        // Draw simple triangle (3 vertices)
+        unsafe { builder.draw(3, 1, 0, 0) }.unwrap();
 
         builder.end_render_pass(Default::default()).unwrap();
 
@@ -309,7 +310,7 @@ impl WindowDependentContext {
         let push_constant_range = PushConstantRange {
             stages: ShaderStages::VERTEX,
             offset: 0,
-            size: (std::mem::size_of::<f32>() * 4) as u32, // rotation_angle + aspect_ratio + circle_radius + segments
+            size: (std::mem::size_of::<f32>() * 6) as u32, // rotation_x + rotation_y + rotation_z + radius + segments + rings
         };
 
         let layout = PipelineLayout::new(
@@ -330,7 +331,7 @@ impl WindowDependentContext {
                 stages,
                 vertex_input_state: Some(vertex_input_state),
                 input_assembly_state: Some(InputAssemblyState {
-                    topology: PrimitiveTopology::TriangleFan,
+                    topology: PrimitiveTopology::TriangleList,
                     ..Default::default()
                 }),
                 rasterization_state: Some(RasterizationState::default()),
@@ -385,6 +386,14 @@ impl WindowDependentContext {
 
     pub fn change_angle_down(&mut self) {
         self.control.rotate_down();
+    }
+
+    pub fn change_angle_left(&mut self) {
+        self.control.rotate_left();
+    }
+
+    pub fn change_angle_right(&mut self) {
+        self.control.rotate_right();
     }
 }
 
