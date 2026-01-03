@@ -128,7 +128,6 @@ impl RenderContext {
             .unwrap()
     }
 
-
     pub fn resumed(&mut self, window: Arc<Window>) {
         self.window_context = Some(WindowDependentContext::new(
             self.instance.clone(),
@@ -144,8 +143,8 @@ impl RenderContext {
     }
 
     pub fn draw(&mut self) {
-        if let Some(ref mut window_context) = self.window_context {
-            window_context.redraw(
+        if let Some(ref mut ctx) = self.window_context {
+            ctx.redraw(
                 self.device.clone(),
                 self.command_buffer_allocator.clone(),
                 self.queue.clone(),
@@ -170,12 +169,12 @@ impl RenderContext {
         self.window_context.as_mut().unwrap().change_angle_down();
         self.request_redraw();
     }
-    
+
     pub fn rotate_left(&mut self) {
         self.window_context.as_mut().unwrap().change_angle_left();
         self.request_redraw();
     }
-    
+
     pub fn rotate_right(&mut self) {
         self.window_context.as_mut().unwrap().change_angle_right();
         self.request_redraw();

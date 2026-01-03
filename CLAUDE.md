@@ -4,71 +4,87 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Rust-based 3D graphics application using the Vulkan API through the Vulkano library to render procedurally generated 3D geometry in fullscreen mode. The project demonstrates vertex shader programming with procedural geometry generation and real-time 3D transformations.
+This is a Rust workspace containing Vulkan-based graphics applications using the `vulkano` library for rendering 3D content with `winit` for window management.
 
-## Build and Development Commands
+### Workspace Members
+
+- **spheres-circles**: Main 3D rendering application with interactive rotation controls and procedural geometry generation
+- **cube**: Experimental Vulkan rendering setup (early development stage)
+
+## Build and Run Commands
 
 ```bash
-cargo check           # Compile check
-cargo build           # Debug build
-cargo run             # Run the procedural circle application
-cargo build --release # Release build
+# Build all workspace members
+cargo build
+
+# Build specific member
+cargo build -p spheres-circles
+cargo build -p cube
+
+# Run specific application
+cargo run -p spheres-circles
+cargo run -p cube
+
+# Build in release mode
+cargo build --release -p spheres-circles
 ```
 
 ## Architecture
 
-**Core Technologies:**
-- Rust (edition 2024)
-- Vulkan API via Vulkano 0.35
-- Winit 0.30 for windowing
-- GLSL shaders compiled at build time
+### spheres-circles Application
 
-**Module Structure:**
-- `main.rs` - Event loop and application lifecycle using winit's ApplicationHandler
-- `render_context.rs` - Vulkan device/instance setup and resource allocation
-- `window_context.rs` - Swapchain management, rendering pipeline, and frame rendering
-- `control.rs` - Input state management for 3D rotation controls
-- `model.rs` - 3D geometry parameters (radius, segments, rings, etc.)
-- `vert.glsl`/`frag.glsl` - Vertex and fragment shaders with procedural 3D geometry generation
+The main application follows a **two-tier context separation** pattern:
 
-**Rendering Pipeline:**
-- Uses Vulkan's low-level graphics API through Vulkano
-- Procedural vertex generation in vertex shader (no vertex buffers)
-- Triangle-based primitive rendering for 3D shapes
-- Push constants for dynamic data (3D rotation angles, geometry parameters)
-- Proper swapchain recreation for window resizing
-- RAII pattern for Vulkan resource management
+1. **Device-Independent Context** (`RenderContext` in `render_context.rs`):
+   - Owns Vulkan instance, physical/logical device, and queue
+   - Created once during event loop initialization
+   - Lives independently of window lifecycle
+   - Contains command buffer allocator
 
-## Application Behavior
+2. **Window-Dependent Context** (`WindowDependentContext` in `window_context.rs`):
+   - Created in `resumed()` lifecycle method when window surface becomes available
+   - Owns swapchain, render pass, framebuffers, graphics pipeline
+   - Handles swapchain recreation on resize
+   - Contains the rendering control state (`Control`)
 
-The application renders procedurally generated 3D geometry that can be rotated in real-time. All geometry is generated mathematically in the vertex shader. Controls:
-- Arrow keys: Control pitch rotation (rotation around X-axis)
-- A/D keys: Control yaw rotation (rotation around Y-axis)
-- Escape: Exit application  
-- Runs in fullscreen borderless window mode
+This separation is critical because:
+- On some platforms (iOS, Android, Wayland), window surfaces may be created/destroyed during app lifecycle
+- Vulkan instance and device can persist across surface recreation
+- The `ApplicationHandler::resumed()` pattern in winit 0.30 requires deferred surface creation
 
-**Key Features:**
-- No vertex data - everything generated procedurally in shaders
-- Real-time 3D rotation animation
-- 3D transformations with rotation matrices
-- Configurable 3D geometry parameters
+### Key Components
 
-## Development Patterns
+- **model.rs**: Defines `SphereParams` for procedural sphere generation parameters
+- **control.rs**: Manages user input state (rotation angles on X/Y/Z axes)
+- **window_context.rs**:
+  - Manages entire Vulkan rendering pipeline per window
+  - Compiles GLSL shaders at build time via `vulkano_shaders` macro
+  - Uses push constants to pass rotation and sphere parameters to shaders
+- **Shaders**:
+  - `vert.glsl`: Vertex shader with procedural geometry generation and 3D rotation matrices
+  - `frag.glsl`: Fragment shader for color output
 
-**Error Handling:** Currently uses `unwrap()` extensively (development-focused, not production-ready)
+### User Controls
 
-**Shader Integration:** GLSL shaders are embedded and compiled at build time via vulkano-shaders
+The application uses keyboard input for 3D rotation:
+- `W`: Rotate up (rotation_x += 0.02)
+- `ArrowLeft`: Rotate down (rotation_x -= 0.02)
+- `A`: Rotate left (rotation_y -= 0.02)
+- `D`: Rotate right (rotation_y += 0.02)
+- `Escape`: Exit application
 
-**Resource Management:** Leverages Rust's ownership system for safe Vulkan resource handling
+### Rendering Pipeline
 
-**Procedural Generation:** All vertices generated mathematically using `gl_VertexIndex`, trigonometric functions, and push constants
+1. Event loop triggers `RedrawRequested`
+2. `RenderContext::draw()` delegates to `WindowDependentContext::redraw()`
+3. Swapchain image acquisition
+4. Command buffer creation with push constants (rotation + sphere params)
+5. Draw call (currently renders 3 vertices as a triangle)
+6. Command buffer execution and present
 
-**Geometric Transformations:** Vertex shader handles real-time 3D rotations using rotation matrices
+### Important Notes
 
-## Testing the Application
-
-Run `cargo run` and test with arrow keys (pitch) and A/D keys (yaw) for 3D rotation. Visual output verification is the primary testing method as this is a graphics application. The 3D geometry should rotate smoothly in 3D space.
-
-## Current Development Status
-
-Currently transitioning from 2D circles to 3D geometry. Start with simple 3D shapes like triangles before building complex geometry like spheres.
+- The application currently renders a simple rotating triangle despite having sphere parameter infrastructure
+- Shaders receive sphere generation parameters but don't yet use them for actual sphere rendering
+- Edition is set to "2024" which requires Rust 1.85+ (currently in beta/nightly as of Dec 2024)
+- All window creation uses borderless fullscreen mode
