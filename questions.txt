@@ -1,1 +1,0 @@
-Could you plear try to run 'cube' project and tell me what is wrong with it ?

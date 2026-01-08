@@ -1,19 +1,25 @@
 use std::sync::Arc;
+use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo, SubpassBeginInfo,
-    SubpassContents,
+    AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
 };
+use vulkano::format::Format;
+use vulkano::image::view::ImageView;
+use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorBlendState};
+use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::subpass::PipelineSubpassType;
-use vulkano::pipeline::graphics::vertex_input::VertexInputState;
+use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::layout::PipelineLayoutCreateInfo;
-use vulkano::pipeline::{GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo};
+use vulkano::pipeline::{
+    DynamicState, GraphicsPipeline, PipelineLayout, PipelineShaderStageCreateInfo,
+};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass};
 use vulkano::single_pass_renderpass;
 use vulkano::sync::GpuFuture;
@@ -28,6 +34,11 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
+mod models;
+use crate::models::POSITIONS;
+
+use self::models::Position;
+
 struct VulkanBasicContext {
     bctx: Arc<VulkanoContext>,
     cb_alloc: Arc<StandardCommandBufferAllocator>,
@@ -41,12 +52,10 @@ struct App {
 struct RenderContext {
     window_ctx: VulkanoWindows,
     id: WindowId,
-    // swapchain: Arc<Swapchain>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
     pipeline: Arc<GraphicsPipeline>,
-    // viewport: Viewport,
-    // recreate_swapchain: bool,
+    vertex_buffer: Subbuffer<[Position]>,
 }
 
 struct RenderContextBuilder {
@@ -56,6 +65,7 @@ struct RenderContextBuilder {
     render_pass: Option<Arc<RenderPass>>,
     framebuffers: Option<Vec<Arc<Framebuffer>>>,
     pipeline: Option<Arc<GraphicsPipeline>>,
+    vertex_buffer: Option<Subbuffer<[Position]>>,
 }
 
 impl RenderContextBuilder {
@@ -75,7 +85,27 @@ impl RenderContextBuilder {
             render_pass: None,
             framebuffers: None,
             pipeline: None,
+            vertex_buffer: None,
         }
+    }
+
+    pub fn with_vertex_buffers(mut self) -> Self {
+        let vertex_buffer = Buffer::from_iter(
+            self.basic_cntx.memory_allocator().clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            POSITIONS,
+        )
+        .unwrap();
+        self.vertex_buffer = Some(vertex_buffer);
+        self
     }
 
     pub fn with_render_pass(mut self) -> Self {
@@ -88,10 +118,16 @@ impl RenderContextBuilder {
                     load_op: Clear,
                     store_op: Store,
                 },
+                depth_stencil: {
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
             },
             pass: {
                 color: [color],
-                depth_stencil: {},
+                depth_stencil: {depth_stencil},
             },
         )
         .unwrap();
@@ -100,25 +136,57 @@ impl RenderContextBuilder {
     }
 
     pub fn with_frame_buffer(mut self) -> Self {
-        let framebuffers: Vec<Arc<Framebuffer>> = self
+        let images = self
             .window_ctx
             .get_renderer(self.id)
-            .as_ref()
             .unwrap()
-            .swapchain_image_views()
-            .iter()
-            .map(|image_view| {
-                let frame_buf_info = FramebufferCreateInfo {
-                    attachments: vec![image_view.clone()],
-                    ..Default::default()
-                };
-                Framebuffer::new(self.render_pass.as_ref().unwrap().clone(), frame_buf_info)
-                    .unwrap()
-            })
-            .collect();
+            .swapchain_image_views();
+
+        let framebuffers = Self::create_frame_buffers(
+            images,
+            self.render_pass.as_ref().unwrap().clone(),
+            self.basic_cntx.memory_allocator().to_owned(),
+        );
 
         self.framebuffers = Some(framebuffers);
         self
+    }
+
+    pub fn create_frame_buffers(
+        images: &[Arc<ImageView>],
+        render_pass: Arc<RenderPass>,
+        memory_allocator: Arc<StandardMemoryAllocator>,
+    ) -> Vec<Arc<Framebuffer>> {
+        let depth_buffer = ImageView::new_default(
+            Image::new(
+                memory_allocator,
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::D16_UNORM,
+                    extent: images[0].image().extent(),
+                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let framebuffers = images
+            .iter()
+            .map(|image| {
+                Framebuffer::new(
+                    render_pass.clone(),
+                    FramebufferCreateInfo {
+                        attachments: vec![image.clone(), depth_buffer.clone()],
+                        ..Default::default()
+                    },
+                )
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        framebuffers
     }
 
     pub fn with_pipeline(mut self) -> Self {
@@ -147,14 +215,31 @@ impl RenderContextBuilder {
 
         let subpass = Subpass::from(self.render_pass.as_ref().unwrap().clone(), 0).unwrap();
 
+        let vertex_input_state = [Position::per_vertex()]
+            .definition(
+                &vs::load(self.basic_cntx.device().clone())
+                    .unwrap()
+                    .entry_point("main")
+                    .unwrap(),
+            )
+            .unwrap();
+
         let create_info = GraphicsPipelineCreateInfo {
             stages: stages,
             rasterization_state: Some(RasterizationState::default()),
-            vertex_input_state: Some(VertexInputState::default()),
+            vertex_input_state: Some(vertex_input_state),
             input_assembly_state: Some(InputAssemblyState::default()),
             viewport_state: Some(ViewportState::default()),
             multisample_state: Some(MultisampleState::default()),
+            depth_stencil_state: Some(DepthStencilState {
+                depth: Some(DepthState {
+                    compare_op: CompareOp::Less,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
             subpass: Some(subpass.into()),
+            dynamic_state: [DynamicState::Viewport].into_iter().collect(),
             color_blend_state: Some(ColorBlendState::with_attachment_states(
                 1,
                 ColorBlendAttachmentState::default(),
@@ -182,6 +267,7 @@ impl RenderContextBuilder {
                     "you are trying to create a pipeline that are not initialized in the builder",
                 )
                 .clone(),
+            vertex_buffer: self.vertex_buffer.unwrap().clone(),
         }
     }
 }
@@ -192,40 +278,37 @@ impl RenderContext {
             .with_render_pass()
             .with_frame_buffer()
             .with_pipeline()
+            .with_vertex_buffers()
             .build()
     }
 
-    pub fn draw(&mut self, allocator: Arc<StandardCommandBufferAllocator>) {
+    pub fn draw(
+        &mut self,
+        cb_alloc: Arc<StandardCommandBufferAllocator>,
+        mem_alloc: Arc<StandardMemoryAllocator>,
+    ) {
         let render_pass = self.render_pass.clone();
         let mut new_framebuffers = None;
 
         let acquire_result = self.window_ctx.get_renderer_mut(self.id).unwrap().acquire(
             None,
             |swapchain_image_views| {
-                let framebuffers: Vec<Arc<Framebuffer>> = swapchain_image_views
-                    .iter()
-                    .map(|image_view| {
-                        Framebuffer::new(
-                            render_pass.clone(),
-                            FramebufferCreateInfo {
-                                attachments: vec![image_view.clone()],
-                                ..Default::default()
-                            },
-                        )
-                        .unwrap()
-                    })
-                    .collect();
+                let framebuffers: Vec<Arc<Framebuffer>> =
+                    RenderContextBuilder::create_frame_buffers(
+                        swapchain_image_views,
+                        render_pass,
+                        mem_alloc,
+                    );
                 new_framebuffers = Some(framebuffers);
             },
         );
 
-        // Update framebuffers if swapchain was recreated
         if let Some(framebuffers) = new_framebuffers {
             self.framebuffers = framebuffers;
         }
 
         let next_image_index = self.window_ctx.get_renderer(self.id).unwrap().image_index();
-        let command_buffer = self.build_cmd_buf(allocator, next_image_index);
+        let command_buffer = self.build_cmd_buf(cb_alloc, next_image_index);
 
         let acquire_future = match acquire_result {
             Ok(future) => future,
@@ -270,7 +353,10 @@ impl RenderContext {
         .unwrap();
 
         let render_pass_begin_info = RenderPassBeginInfo {
-            clear_values: vec![Some([0.0, 1.0, 0.0, 1.0].into())],
+            clear_values: vec![
+                Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
+                Some(1.0.into()),                  // Depth attachment
+            ],
             ..RenderPassBeginInfo::framebuffer(self.framebuffers[next_idx as usize].clone())
         };
 
@@ -292,20 +378,13 @@ impl RenderContext {
 
         cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
 
-        unsafe {
-            cb.draw(
-                3, // vertex_count (e.g., 3 for a triangle)
-                1, // instance_count
-                0, // first_vertex
-                0, // first_instance
-            )
-        }
-        .unwrap();
+        cb.bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap();
 
-        // 9. End render pass
+        unsafe { cb.draw(3, 1, 0, 0) }.unwrap();
+
         cb.end_render_pass(Default::default()).unwrap();
 
-        // 10. Build the command buffer
         let command_buffer = cb.build().unwrap();
         command_buffer
     }
@@ -349,10 +428,10 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 //TODO i guess you'll be rendering here
-                self.rdx
-                    .as_mut()
-                    .unwrap()
-                    .draw(self.basic_context.cb_alloc.clone());
+                self.rdx.as_mut().unwrap().draw(
+                    self.basic_context.cb_alloc.clone(),
+                    self.basic_context.bctx.memory_allocator().clone(),
+                );
             }
 
             WindowEvent::KeyboardInput {
@@ -401,5 +480,5 @@ fn main() {
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = App::new();
-    event_loop.run_app(&mut app);
+    _ = event_loop.run_app(&mut app);
 }
