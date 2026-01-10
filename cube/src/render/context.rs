@@ -1,0 +1,217 @@
+use std::sync::Arc;
+use glam::{Mat4, Vec3};
+use vulkano::buffer::Subbuffer;
+use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
+};
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
+use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
+use vulkano::memory::allocator::StandardMemoryAllocator;
+use vulkano::pipeline::graphics::viewport::Viewport;
+use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
+use vulkano::render_pass::{Framebuffer, RenderPass};
+use vulkano::sync::GpuFuture;
+use vulkano::{sync};
+use vulkano_util::context::VulkanoContext;
+use vulkano_util::window::VulkanoWindows;
+use winit::event_loop::ActiveEventLoop;
+use winit::window::WindowId;
+
+use super::builder::RenderContextBuilder;
+use crate::models::Position;
+use crate::shaders::vs;
+
+pub struct RenderContext {
+    pub bctx: Arc<VulkanoContext>,
+    pub window_ctx: VulkanoWindows,
+    pub id: WindowId,
+    pub render_pass: Arc<RenderPass>,
+    pub framebuffers: Vec<Arc<Framebuffer>>,
+    pub pipeline: Arc<GraphicsPipeline>,
+    pub vertex_buffer: Subbuffer<[Position]>,
+    pub index_buffer: Subbuffer<[u16]>,
+    pub uniform_buffers: Vec<Subbuffer<vs::Data>>,
+    pub previous_frame_end: Option<Box<dyn GpuFuture>>,
+}
+
+impl RenderContext {
+    pub fn new(event_loop: &ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
+        RenderContextBuilder::new(event_loop, basic_cntx)
+            .with_render_pass()
+            .with_frame_buffer()
+            .with_pipeline()
+            .with_vertex_buffers()
+            .with_index_buffer()
+            .with_uniform_buffers()
+            .build()
+    }
+
+    pub fn draw(
+        &mut self,
+        cb_alloc: Arc<StandardCommandBufferAllocator>,
+        mem_alloc: Arc<StandardMemoryAllocator>,
+        desc_alloc: Arc<StandardDescriptorSetAllocator>,
+    ) {
+        let render_pass = self.render_pass.clone();
+        let mut new_framebuffers = None;
+
+        let acquire_result = self.window_ctx.get_renderer_mut(self.id).unwrap().acquire(
+            None,
+            |swapchain_image_views| {
+                let framebuffers: Vec<Arc<Framebuffer>> =
+                    RenderContextBuilder::create_frame_buffers(
+                        swapchain_image_views,
+                        render_pass,
+                        mem_alloc,
+                    );
+                new_framebuffers = Some(framebuffers);
+            },
+        );
+
+        if let Some(framebuffers) = new_framebuffers {
+            self.framebuffers = framebuffers;
+        }
+
+        let next_image_index = self.window_ctx.get_renderer(self.id).unwrap().image_index();
+        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index);
+
+        let acquire_future = match acquire_result {
+            Ok(future) => future,
+            _ => {
+                panic!("something went wrong with acquiring the future")
+            }
+        };
+
+        let cmd_buf_executed = acquire_future
+            .join(self.previous_frame_end.take().unwrap())
+            .then_execute(
+                self.window_ctx
+                    .get_renderer(self.id)
+                    .unwrap()
+                    .graphics_queue()
+                    .clone(),
+                command_buffer,
+            )
+            .unwrap()
+            .boxed();
+
+        self.window_ctx
+            .get_renderer_mut(self.id)
+            .unwrap()
+            .present(cmd_buf_executed, true);
+
+        self.previous_frame_end = Some(sync::now(self.bctx.device().clone()).boxed());
+    }
+
+    pub fn build_cmd_buf(
+        &mut self,
+        cmb_alloc: Arc<StandardCommandBufferAllocator>,
+        desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
+        next_idx: u32,
+    ) -> Arc<PrimaryAutoCommandBuffer> {
+        let uniform_buffer = self.update_uniform();
+        let layout = self.pipeline.layout().set_layouts()[0].clone();
+        let descriptor_set = DescriptorSet::new(
+            desc_mem_alloc,
+            layout,
+            [WriteDescriptorSet::buffer(0, uniform_buffer)],
+            [],
+        )
+        .unwrap();
+        let mut cb = AutoCommandBufferBuilder::primary(
+            cmb_alloc,
+            self.window_ctx
+                .get_primary_renderer()
+                .as_ref()
+                .unwrap()
+                .graphics_queue()
+                .queue_family_index(),
+            vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let render_pass_begin_info = RenderPassBeginInfo {
+            clear_values: vec![
+                Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
+                Some(1.0.into()),                  // Depth attachment
+            ],
+            ..RenderPassBeginInfo::framebuffer(self.framebuffers[next_idx as usize].clone())
+        };
+
+        cb.begin_render_pass(render_pass_begin_info, Default::default())
+            .unwrap();
+
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent: self
+                .window_ctx
+                .get_renderer(self.id)
+                .unwrap()
+                .swapchain_image_size()
+                .map(|v| v as f32),
+            depth_range: 0.0..=1.0,
+        };
+        cb.set_viewport(0, [viewport].into_iter().collect())
+            .unwrap();
+
+        cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
+
+        cb.bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            self.pipeline.layout().clone(),
+            0,
+            descriptor_set,
+        )
+        .unwrap();
+
+        cb.bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .unwrap();
+
+        cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
+
+        unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
+
+        cb.end_render_pass(Default::default()).unwrap();
+
+        let command_buffer = cb.build().unwrap();
+        command_buffer
+    }
+
+    pub fn update_uniform(&self) -> Subbuffer<vs::Data> {
+        let model_matrix = Mat4::from_rotation_y(0.3) * Mat4::from_rotation_x(0.5);
+
+        let view = Mat4::look_at_rh(
+            Vec3::new(3.5, 2.5, 4.0), // camera position - viewing from corner angle
+            Vec3::ZERO,                // look at origin
+            Vec3::Y,                   // up direction
+        );
+
+        let aspect_ratio = self
+            .window_ctx
+            .get_renderer(self.id)
+            .unwrap()
+            .aspect_ratio();
+
+        let projection = Mat4::perspective_rh(
+            45.0_f32.to_radians(), // FOV
+            aspect_ratio,
+            0.1,   // near plane
+            100.0, // far plane
+        );
+
+        let mvp = projection * view * model_matrix;
+
+        let uniform_data = vs::Data {
+            mvp: mvp.to_cols_array_2d(),
+        };
+
+        let buffer = self.uniform_buffers
+            [self.window_ctx.get_renderer(self.id).unwrap().image_index() as usize]
+            .clone();
+
+        *buffer.write().unwrap() = uniform_data;
+
+        buffer
+    }
+}
