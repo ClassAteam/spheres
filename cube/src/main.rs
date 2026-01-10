@@ -19,7 +19,7 @@ use vulkano::pipeline::graphics::color_blend::{ColorBlendAttachmentState, ColorB
 use vulkano::pipeline::graphics::depth_stencil::{CompareOp, DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::multisample::MultisampleState;
-use vulkano::pipeline::graphics::rasterization::RasterizationState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, FrontFace, RasterizationState};
 use vulkano::pipeline::graphics::vertex_input::{Vertex, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::layout::PipelineLayoutCreateInfo;
@@ -313,7 +313,11 @@ impl RenderContextBuilder {
 
         let create_info = GraphicsPipelineCreateInfo {
             stages: stages,
-            rasterization_state: Some(RasterizationState::default()),
+            rasterization_state: Some(RasterizationState {
+                cull_mode: CullMode::Back,
+                front_face: FrontFace::Clockwise,
+                ..Default::default()
+            }),
             vertex_input_state: Some(vertex_input_state),
             input_assembly_state: Some(InputAssemblyState::default()),
             viewport_state: Some(ViewportState::default()),
@@ -321,7 +325,7 @@ impl RenderContextBuilder {
             depth_stencil_state: Some(DepthStencilState {
                 depth: Some(DepthState {
                     compare_op: CompareOp::Less,
-                    ..Default::default()
+                    write_enable: true,
                 }),
                 ..Default::default()
             }),
@@ -499,6 +503,7 @@ impl RenderContext {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
+        // unsafe { cb.draw_indexed(8, 1, 0, 0, 0) }.unwrap();
 
         cb.end_render_pass(Default::default()).unwrap();
 
@@ -509,12 +514,13 @@ impl RenderContext {
     pub fn update_uniform(&self) -> Subbuffer<Data> {
         // In your render loop:
         let model_matrix = Mat4::from_rotation_y(0.3) * Mat4::from_rotation_x(0.5);
+        // let model_matrix = Mat4::IDENTITY;
 
         // Combined with view and projection:
         let view = Mat4::look_at_rh(
-            Vec3::new(0.0, 0.0, 5.0), // camera position
-            Vec3::ZERO,               // look at origin
-            Vec3::Y,                  // up direction
+            Vec3::new(3.5, 2.5, 4.0), // camera position - viewing from corner angle
+            Vec3::ZERO,                // look at origin
+            Vec3::Y,                   // up direction
         );
 
         let aspect_ratio = self
