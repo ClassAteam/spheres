@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+glam = "0.30.10"
 vulkano = "0.35.2"
 vulkano-shaders = "0.35.0"
 vulkano-util = "0.35.0"
