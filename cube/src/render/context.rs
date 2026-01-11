@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use glam::{Mat4, Vec3};
 use vulkano::buffer::Subbuffer;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -11,14 +10,15 @@ use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass};
+use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use vulkano::{sync};
 use vulkano_util::context::VulkanoContext;
 use vulkano_util::window::VulkanoWindows;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
+use crate::control::TransformState;
 use crate::models::Position;
 use crate::shaders::vs;
 
@@ -52,6 +52,7 @@ impl RenderContext {
         cb_alloc: Arc<StandardCommandBufferAllocator>,
         mem_alloc: Arc<StandardMemoryAllocator>,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
+        transform: &TransformState,
     ) {
         let render_pass = self.render_pass.clone();
         let mut new_framebuffers = None;
@@ -74,7 +75,7 @@ impl RenderContext {
         }
 
         let next_image_index = self.window_ctx.get_renderer(self.id).unwrap().image_index();
-        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index);
+        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index, transform);
 
         let acquire_future = match acquire_result {
             Ok(future) => future,
@@ -109,8 +110,9 @@ impl RenderContext {
         cmb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
         next_idx: u32,
+        transform: &TransformState,
     ) -> Arc<PrimaryAutoCommandBuffer> {
-        let uniform_buffer = self.update_uniform();
+        let uniform_buffer = self.update_uniform(transform);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(
             desc_mem_alloc,
@@ -178,29 +180,14 @@ impl RenderContext {
         command_buffer
     }
 
-    pub fn update_uniform(&self) -> Subbuffer<vs::Data> {
-        let model_matrix = Mat4::from_rotation_y(0.3) * Mat4::from_rotation_x(0.5);
-
-        let view = Mat4::look_at_rh(
-            Vec3::new(3.5, 2.5, 4.0), // camera position - viewing from corner angle
-            Vec3::ZERO,                // look at origin
-            Vec3::Y,                   // up direction
-        );
-
+    pub fn update_uniform(&self, transform: &TransformState) -> Subbuffer<vs::Data> {
         let aspect_ratio = self
             .window_ctx
             .get_renderer(self.id)
             .unwrap()
             .aspect_ratio();
 
-        let projection = Mat4::perspective_rh(
-            45.0_f32.to_radians(), // FOV
-            aspect_ratio,
-            0.1,   // near plane
-            100.0, // far plane
-        );
-
-        let mvp = projection * view * model_matrix;
+        let mvp = transform.compute_mvp(aspect_ratio);
 
         let uniform_data = vs::Data {
             mvp: mvp.to_cols_array_2d(),

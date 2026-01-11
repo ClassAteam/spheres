@@ -1,3 +1,4 @@
+use glam::Vec3;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -6,11 +7,13 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
 use crate::context::VulkanBasicContext;
+use crate::control::TransformState;
 use crate::render::RenderContext;
 
 pub struct App {
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
+    transform: TransformState,
 }
 
 impl App {
@@ -18,6 +21,7 @@ impl App {
         let context = VulkanBasicContext::new();
         App {
             basic_context: Arc::new(context),
+            transform: TransformState::new(),
             rdx: None,
         }
     }
@@ -42,20 +46,25 @@ impl ApplicationHandler for App {
                     self.basic_context.cb_alloc.clone(),
                     self.basic_context.bctx.memory_allocator().clone(),
                     self.basic_context.descriptor_set_allocator.clone(),
+                    &self.transform,
                 );
             }
-
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
-                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        physical_key: PhysicalKey::Code(key_code),
                         state: ElementState::Pressed,
                         ..
                     },
                 ..
-            } => {
-                event_loop.exit();
-            }
+            } => match key_code {
+                KeyCode::KeyL => self.transform.rotate_model(Vec3::new(0.0, -0.01, 0.0)),
+                KeyCode::KeyH => self.transform.rotate_model(Vec3::new(0.0, 0.01, 0.0)),
+                KeyCode::KeyJ => self.transform.rotate_model(Vec3::new(-0.01, 0.0, 0.0)),
+                KeyCode::KeyK => self.transform.rotate_model(Vec3::new(0.01, 0.0, 0.0)),
+                KeyCode::Escape => event_loop.exit(),
+                _ => (),
+            },
             _ => (),
         }
     }

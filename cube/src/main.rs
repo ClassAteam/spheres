@@ -2,6 +2,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
 mod context;
+mod control;
 mod models;
 mod render;
 mod shaders;
