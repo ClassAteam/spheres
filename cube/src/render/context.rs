@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use egui_winit_vulkano::{egui, Gui};
 use vulkano::buffer::Subbuffer;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -18,6 +19,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
+use crate::app::FpsCounter;
 use crate::control::TransformState;
 use crate::models::Position;
 use crate::shaders::vs;
@@ -33,6 +35,7 @@ pub struct RenderContext {
     pub index_buffer: Subbuffer<[u16]>,
     pub uniform_buffers: Vec<Subbuffer<vs::Data>>,
     pub previous_frame_end: Option<Box<dyn GpuFuture>>,
+    pub gui: Gui,
 }
 
 impl RenderContext {
@@ -53,6 +56,7 @@ impl RenderContext {
         mem_alloc: Arc<StandardMemoryAllocator>,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
+        fps_counter: &FpsCounter,
     ) {
         let render_pass = self.render_pass.clone();
         let mut new_framebuffers = None;
@@ -75,7 +79,7 @@ impl RenderContext {
         }
 
         let next_image_index = self.window_ctx.get_renderer(self.id).unwrap().image_index();
-        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index, transform);
+        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index, transform, fps_counter);
 
         let acquire_future = match acquire_result {
             Ok(future) => future,
@@ -84,7 +88,8 @@ impl RenderContext {
             }
         };
 
-        let cmd_buf_executed = acquire_future
+        // Render egui and get the final future
+        let after_cube = acquire_future
             .join(self.previous_frame_end.take().unwrap())
             .then_execute(
                 self.window_ctx
@@ -94,13 +99,17 @@ impl RenderContext {
                     .clone(),
                 command_buffer,
             )
-            .unwrap()
-            .boxed();
+            .unwrap();
+
+        let final_future = self.gui.draw_on_image(
+            after_cube,
+            self.framebuffers[next_image_index as usize].attachments()[0].clone(),
+        );
 
         self.window_ctx
             .get_renderer_mut(self.id)
             .unwrap()
-            .present(cmd_buf_executed, true);
+            .present(final_future, true);
 
         self.previous_frame_end = Some(sync::now(self.bctx.device().clone()).boxed());
     }
@@ -111,6 +120,7 @@ impl RenderContext {
         desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
         next_idx: u32,
         transform: &TransformState,
+        fps_counter: &FpsCounter,
     ) -> Arc<PrimaryAutoCommandBuffer> {
         let uniform_buffer = self.update_uniform(transform);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
@@ -177,6 +187,19 @@ impl RenderContext {
         cb.end_render_pass(Default::default()).unwrap();
 
         let command_buffer = cb.build().unwrap();
+
+        // Build egui UI
+        self.gui.immediate_ui(|gui| {
+            let ctx = gui.context();
+            egui::Window::new("Debug Info")
+                .default_pos(egui::pos2(10.0, 10.0))
+                .resizable(false)
+                .show(&ctx, |ui| {
+                    ui.label(format!("FPS: {:.1}", fps_counter.fps()));
+                    ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
+                });
+        });
+
         command_buffer
     }
 

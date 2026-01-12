@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use egui_winit_vulkano::Gui;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
@@ -18,10 +19,11 @@ use super::pipeline::create_graphics_pipeline;
 use crate::models::{Position, INDICES, POSITIONS};
 use crate::shaders::vs;
 
-pub struct RenderContextBuilder {
+pub struct RenderContextBuilder<'a> {
     basic_cntx: Arc<VulkanoContext>,
     window_ctx: VulkanoWindows,
     id: WindowId,
+    event_loop: &'a ActiveEventLoop,
     render_pass: Option<Arc<RenderPass>>,
     framebuffers: Option<Vec<Arc<Framebuffer>>>,
     pipeline: Option<Arc<GraphicsPipeline>>,
@@ -30,8 +32,8 @@ pub struct RenderContextBuilder {
     uniform_buffers: Option<Vec<Subbuffer<vs::Data>>>,
 }
 
-impl RenderContextBuilder {
-    pub fn new(event_loop: &ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
+impl<'a> RenderContextBuilder<'a> {
+    pub fn new(event_loop: &'a ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
         let mut window_ctx = VulkanoWindows::default();
         let window_descr = WindowDescriptor {
             title: "Cube".to_string(),
@@ -44,6 +46,7 @@ impl RenderContextBuilder {
             window_ctx,
             id,
             basic_cntx,
+            event_loop,
             render_pass: None,
             framebuffers: None,
             pipeline: None,
@@ -210,6 +213,20 @@ impl RenderContextBuilder {
     }
 
     pub fn build(self) -> RenderContext {
+        let renderer = self.window_ctx.get_renderer(self.id).unwrap();
+        let surface = renderer.surface();
+
+        let gui = Gui::new(
+            self.event_loop,
+            surface.clone(),
+            renderer.graphics_queue().clone(),
+            renderer.swapchain_format(),
+            egui_winit_vulkano::GuiConfig {
+                is_overlay: true,
+                ..Default::default()
+            },
+        );
+
         RenderContext {
             bctx: self.basic_cntx.clone(),
             window_ctx: self.window_ctx,
@@ -226,6 +243,7 @@ impl RenderContextBuilder {
             index_buffer: self.index_buffer.unwrap().clone(),
             uniform_buffers: self.uniform_buffers.unwrap().clone(),
             previous_frame_end: Some(sync::now(self.basic_cntx.device().clone()).boxed()),
+            gui,
         }
     }
 }
