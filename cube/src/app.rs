@@ -42,11 +42,7 @@ impl FpsCounter {
             return 0.0;
         }
         let avg_time: f32 = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
-        if avg_time > 0.0 {
-            1.0 / avg_time
-        } else {
-            0.0
-        }
+        if avg_time > 0.0 { 1.0 / avg_time } else { 0.0 }
     }
 
     pub fn frame_time_ms(&self) -> f32 {
@@ -86,11 +82,9 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        // Let egui handle the event first
         if let Some(rdx) = &mut self.rdx {
             let consumed = rdx.gui.update(&event);
 
-            // If egui consumed the event (user is interacting with GUI), don't process it further
             if consumed {
                 return;
             }
@@ -105,7 +99,6 @@ impl ApplicationHandler for App {
                 self.fps_counter.update();
                 self.rdx.as_mut().unwrap().draw(
                     self.basic_context.cb_alloc.clone(),
-                    self.basic_context.bctx.memory_allocator().clone(),
                     self.basic_context.descriptor_set_allocator.clone(),
                     &self.transform,
                     &self.fps_counter,

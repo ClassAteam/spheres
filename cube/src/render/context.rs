@@ -1,5 +1,5 @@
+use egui_winit_vulkano::{Gui, egui};
 use std::sync::Arc;
-use egui_winit_vulkano::{egui, Gui};
 use vulkano::buffer::Subbuffer;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -7,10 +7,9 @@ use vulkano::command_buffer::{
 };
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
-use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, RenderPass};
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano_util::context::VulkanoContext;
@@ -29,7 +28,6 @@ pub struct RenderContext {
     pub window_ctx: VulkanoWindows,
     pub id: WindowId,
     pub render_pass: Arc<RenderPass>,
-    pub framebuffers: Vec<Arc<Framebuffer>>,
     pub pipeline: Arc<GraphicsPipeline>,
     pub vertex_buffer: Subbuffer<[Position]>,
     pub index_buffer: Subbuffer<[u16]>,
@@ -42,7 +40,6 @@ impl RenderContext {
     pub fn new(event_loop: &ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
         RenderContextBuilder::new(event_loop, basic_cntx)
             .with_render_pass()
-            .with_frame_buffer()
             .with_pipeline()
             .with_vertex_buffers()
             .with_index_buffer()
@@ -53,42 +50,30 @@ impl RenderContext {
     pub fn draw(
         &mut self,
         cb_alloc: Arc<StandardCommandBufferAllocator>,
-        mem_alloc: Arc<StandardMemoryAllocator>,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
         fps_counter: &FpsCounter,
     ) {
-        let render_pass = self.render_pass.clone();
-        let mut new_framebuffers = None;
+        let acquire_result = self
+            .window_ctx
+            .get_renderer_mut(self.id)
+            .unwrap()
+            .acquire(None, |_| {});
 
-        let acquire_result = self.window_ctx.get_renderer_mut(self.id).unwrap().acquire(
-            None,
-            |swapchain_image_views| {
-                let framebuffers: Vec<Arc<Framebuffer>> =
-                    RenderContextBuilder::create_frame_buffers(
-                        swapchain_image_views,
-                        render_pass,
-                        mem_alloc,
-                    );
-                new_framebuffers = Some(framebuffers);
-            },
-        );
-
-        if let Some(framebuffers) = new_framebuffers {
-            self.framebuffers = framebuffers;
-        }
-
-        let next_image_index = self.window_ctx.get_renderer(self.id).unwrap().image_index();
-        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, next_image_index, transform, fps_counter);
+        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform, fps_counter);
 
         let acquire_future = match acquire_result {
             Ok(future) => future,
+
+            Err(vulkano::VulkanError::OutOfDate) => {
+                self.window_ctx.get_renderer_mut(self.id).unwrap().resize();
+                return;
+            }
             _ => {
-                panic!("something went wrong with acquiring the future")
+                panic!("something went wrong with acquiring the swapchain index")
             }
         };
 
-        // Render egui and get the final future
         let after_cube = acquire_future
             .join(self.previous_frame_end.take().unwrap())
             .then_execute(
@@ -103,7 +88,10 @@ impl RenderContext {
 
         let final_future = self.gui.draw_on_image(
             after_cube,
-            self.framebuffers[next_image_index as usize].attachments()[0].clone(),
+            self.window_ctx
+                .get_renderer(self.id)
+                .unwrap()
+                .swapchain_image_view(),
         );
 
         self.window_ctx
@@ -118,7 +106,6 @@ impl RenderContext {
         &mut self,
         cmb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
-        next_idx: u32,
         transform: &TransformState,
         fps_counter: &FpsCounter,
     ) -> Arc<PrimaryAutoCommandBuffer> {
@@ -143,12 +130,33 @@ impl RenderContext {
         )
         .unwrap();
 
+        let image = self
+            .window_ctx
+            .get_renderer(self.id)
+            .unwrap()
+            .swapchain_image_view();
+
+        let depth_view = self
+            .window_ctx
+            .get_renderer_mut(self.id)
+            .unwrap()
+            .get_additional_image_view(0);
+
+        let framebuffer = Framebuffer::new(
+            self.render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![image, depth_view],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         let render_pass_begin_info = RenderPassBeginInfo {
             clear_values: vec![
                 Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
                 Some(1.0.into()),                  // Depth attachment
             ],
-            ..RenderPassBeginInfo::framebuffer(self.framebuffers[next_idx as usize].clone())
+            ..RenderPassBeginInfo::framebuffer(framebuffer)
         };
 
         cb.begin_render_pass(render_pass_begin_info, Default::default())

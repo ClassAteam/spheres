@@ -1,12 +1,11 @@
-use std::sync::Arc;
 use egui_winit_vulkano::Gui;
+use std::sync::Arc;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::format::Format;
-use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
-use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
+use vulkano::image::ImageUsage;
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter};
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::render_pass::RenderPass;
 use vulkano::sync::GpuFuture;
 use vulkano::{single_pass_renderpass, sync};
 use vulkano_util::context::VulkanoContext;
@@ -16,7 +15,7 @@ use winit::window::WindowId;
 
 use super::context::RenderContext;
 use super::pipeline::create_graphics_pipeline;
-use crate::models::{Position, INDICES, POSITIONS};
+use crate::models::{INDICES, POSITIONS, Position};
 use crate::shaders::vs;
 
 pub struct RenderContextBuilder<'a> {
@@ -25,7 +24,6 @@ pub struct RenderContextBuilder<'a> {
     id: WindowId,
     event_loop: &'a ActiveEventLoop,
     render_pass: Option<Arc<RenderPass>>,
-    framebuffers: Option<Vec<Arc<Framebuffer>>>,
     pipeline: Option<Arc<GraphicsPipeline>>,
     vertex_buffer: Option<Subbuffer<[Position]>>,
     index_buffer: Option<Subbuffer<[u16]>>,
@@ -48,7 +46,7 @@ impl<'a> RenderContextBuilder<'a> {
             basic_cntx,
             event_loop,
             render_pass: None,
-            framebuffers: None,
+            // framebuffers: None,
             pipeline: None,
             vertex_buffer: None,
             index_buffer: None,
@@ -146,62 +144,14 @@ impl<'a> RenderContextBuilder<'a> {
             },
         )
         .unwrap();
+
+        self.window_ctx
+            .get_renderer_mut(self.id)
+            .unwrap()
+            .add_additional_image_view(0, Format::D16_UNORM, ImageUsage::DEPTH_STENCIL_ATTACHMENT);
+
         self.render_pass = Some(pass);
         self
-    }
-
-    pub fn with_frame_buffer(mut self) -> Self {
-        let images = self
-            .window_ctx
-            .get_renderer(self.id)
-            .unwrap()
-            .swapchain_image_views();
-
-        let framebuffers = Self::create_frame_buffers(
-            images,
-            self.render_pass.as_ref().unwrap().clone(),
-            self.basic_cntx.memory_allocator().to_owned(),
-        );
-
-        self.framebuffers = Some(framebuffers);
-        self
-    }
-
-    pub fn create_frame_buffers(
-        images: &[Arc<ImageView>],
-        render_pass: Arc<RenderPass>,
-        memory_allocator: Arc<StandardMemoryAllocator>,
-    ) -> Vec<Arc<Framebuffer>> {
-        let depth_buffer = ImageView::new_default(
-            Image::new(
-                memory_allocator,
-                ImageCreateInfo {
-                    image_type: ImageType::Dim2d,
-                    format: Format::D16_UNORM,
-                    extent: images[0].image().extent(),
-                    usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT | ImageUsage::TRANSIENT_ATTACHMENT,
-                    ..Default::default()
-                },
-                AllocationCreateInfo::default(),
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        let framebuffers = images
-            .iter()
-            .map(|image| {
-                Framebuffer::new(
-                    render_pass.clone(),
-                    FramebufferCreateInfo {
-                        attachments: vec![image.clone(), depth_buffer.clone()],
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-
-        framebuffers
     }
 
     pub fn with_pipeline(mut self) -> Self {
@@ -232,7 +182,6 @@ impl<'a> RenderContextBuilder<'a> {
             window_ctx: self.window_ctx,
             id: self.id,
             render_pass: self.render_pass.unwrap().clone(),
-            framebuffers: self.framebuffers.unwrap().clone(),
             pipeline: self
                 .pipeline
                 .expect(
