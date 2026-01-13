@@ -18,8 +18,8 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
-use crate::app::FpsCounter;
 use crate::control::TransformState;
+use crate::counter::FpsCounter;
 use crate::models::Position;
 use crate::shaders::vs;
 
@@ -60,7 +60,18 @@ impl RenderContext {
             .unwrap()
             .acquire(None, |_| {});
 
-        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform, fps_counter);
+        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform);
+
+        self.gui.immediate_ui(|gui| {
+            let ctx = gui.context();
+            egui::Window::new("Debug Info")
+                .default_pos(egui::pos2(10.0, 10.0))
+                .resizable(false)
+                .show(&ctx, |ui| {
+                    ui.label(format!("FPS: {:.1}", fps_counter.fps()));
+                    ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
+                });
+        });
 
         let acquire_future = match acquire_result {
             Ok(future) => future,
@@ -107,7 +118,6 @@ impl RenderContext {
         cmb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
-        fps_counter: &FpsCounter,
     ) -> Arc<PrimaryAutoCommandBuffer> {
         let uniform_buffer = self.update_uniform(transform);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
@@ -195,18 +205,6 @@ impl RenderContext {
         cb.end_render_pass(Default::default()).unwrap();
 
         let command_buffer = cb.build().unwrap();
-
-        // Build egui UI
-        self.gui.immediate_ui(|gui| {
-            let ctx = gui.context();
-            egui::Window::new("Debug Info")
-                .default_pos(egui::pos2(10.0, 10.0))
-                .resizable(false)
-                .show(&ctx, |ui| {
-                    ui.label(format!("FPS: {:.1}", fps_counter.fps()));
-                    ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
-                });
-        });
 
         command_buffer
     }
