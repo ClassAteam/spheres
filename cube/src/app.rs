@@ -6,9 +6,9 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
-use crate::control::TransformState;
 use crate::counter::FpsCounter;
 use crate::render::RenderContext;
+use crate::transform::TransformState;
 use crate::vulkan_context::VulkanBasicContext;
 
 pub struct App {

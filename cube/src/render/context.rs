@@ -18,10 +18,10 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
-use crate::control::TransformState;
 use crate::counter::FpsCounter;
 use crate::models::Position;
 use crate::shaders::vs;
+use crate::transform::TransformState;
 
 pub struct RenderContext {
     pub bctx: Arc<VulkanoContext>,
@@ -62,14 +62,56 @@ impl RenderContext {
 
         let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform);
 
+        let aspect_ratio = self
+            .window_ctx
+            .get_renderer(self.id)
+            .unwrap()
+            .aspect_ratio();
+
         self.gui.immediate_ui(|gui| {
             let ctx = gui.context();
             egui::Window::new("Debug Info")
                 .default_pos(egui::pos2(10.0, 10.0))
-                .resizable(false)
+                .resizable(true)
+                .default_width(1000.0)
                 .show(&ctx, |ui| {
                     ui.label(format!("FPS: {:.1}", fps_counter.fps()));
                     ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
+
+                    ui.separator();
+                    ui.heading("Transform State");
+                    ui.label(format!("{:#?}", transform));
+
+                    ui.separator();
+                    ui.heading("Vertices (Original)");
+                    egui::ScrollArea::vertical()
+                        .id_salt("original_vertices")
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            ui.label(format!("{:#?}", crate::models::POSITIONS));
+                        });
+
+                    ui.separator();
+                    ui.heading("Vertices (Transformed)");
+                    egui::ScrollArea::vertical()
+                        .id_salt("transformed_vertices")
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            for (i, vertex) in crate::models::POSITIONS.iter().enumerate() {
+                                let transformed = transform.transform_vertex(vertex.position, aspect_ratio);
+                                ui.label(format!(
+                                    "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]",
+                                    i,
+                                    transformed.clip_space[0],
+                                    transformed.clip_space[1],
+                                    transformed.clip_space[2],
+                                    transformed.clip_space[3],
+                                    transformed.ndc[0],
+                                    transformed.ndc[1],
+                                    transformed.ndc[2]
+                                ));
+                            }
+                        });
                 });
         });
 

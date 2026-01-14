@@ -1,12 +1,12 @@
 use vulkano::{buffer::BufferContents, pipeline::graphics::vertex_input::Vertex};
 
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Position {
     #[format(R32G32B32_SFLOAT)]
-    position: [f32; 3],
+    pub position: [f32; 3],
     #[format(R32G32B32_SFLOAT)]
-    color: [f32; 3],
+    pub color: [f32; 3],
 }
 
 // 24 vertices (4 per face, 6 faces) - each face has its own vertices with a unique color

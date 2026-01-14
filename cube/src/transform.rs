@@ -1,23 +1,27 @@
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 
+#[derive(Debug)]
 pub struct TransformState {
     pub model: ModelTransform,
     pub camera: Camera,
     pub projection: ProjectionParams,
 }
 
+#[derive(Debug)]
 pub struct ModelTransform {
     pub rotation: Vec3, // x, y, z rotations in radians
     pub translation: Vec3,
     pub scale: Vec3,
 }
 
+#[derive(Debug)]
 pub struct Camera {
     pub position: Vec3,
     pub target: Vec3,
     pub up: Vec3,
 }
 
+#[derive(Debug)]
 pub struct ProjectionParams {
     pub fov: f32, // field of view in radians
     pub near: f32,
@@ -98,7 +102,31 @@ impl TransformState {
         self.model.rotation += delta;
     }
 
-    // pub fn move_camera(&mut self, delta: Vec3) {
-    //     self.camera.position += delta;
-    // }
+    pub fn transform_vertex(&self, position: [f32; 3], aspect_ratio: f32) -> TransformedVertex {
+        let mvp = self.compute_mvp(aspect_ratio);
+        let pos = Vec4::new(position[0], position[1], position[2], 1.0);
+        let clip_space = mvp * pos;
+
+        // Perspective divide to get NDC (Normalized Device Coordinates)
+        let ndc = if clip_space.w != 0.0 {
+            Vec3::new(
+                clip_space.x / clip_space.w,
+                clip_space.y / clip_space.w,
+                clip_space.z / clip_space.w,
+            )
+        } else {
+            Vec3::ZERO
+        };
+
+        TransformedVertex {
+            clip_space: [clip_space.x, clip_space.y, clip_space.z, clip_space.w],
+            ndc: [ndc.x, ndc.y, ndc.z],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct TransformedVertex {
+    pub clip_space: [f32; 4], // x, y, z, w before perspective divide
+    pub ndc: [f32; 3],        // Normalized Device Coordinates (after perspective divide)
 }
