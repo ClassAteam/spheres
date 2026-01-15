@@ -68,14 +68,21 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.fps_counter.update();
                 let acquired_future = self.rdx.as_mut().unwrap().acquire();
-                let after_cube_future = self.rdx.as_mut().unwrap().draw(
+                let after_cube_future = self.rdx.as_mut().unwrap().draw_cube(
                     acquired_future,
                     self.basic_context.cb_alloc.clone(),
                     self.basic_context.descriptor_set_allocator.clone(),
                     &self.transform,
                 );
 
-                self.rdx.as_mut().unwrap().present(after_cube_future);
+                let after_debug_ui = self.dbg_render.as_mut().unwrap().draw_ui(
+                    self.rdx.as_mut().unwrap(),
+                    &self.fps_counter,
+                    &self.transform,
+                    after_cube_future,
+                );
+
+                self.rdx.as_mut().unwrap().present(after_debug_ui);
             }
             WindowEvent::KeyboardInput {
                 event:

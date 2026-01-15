@@ -1,4 +1,3 @@
-use egui_winit_vulkano::Gui;
 use std::sync::Arc;
 use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
@@ -7,8 +6,7 @@ use vulkano::image::ImageUsage;
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::RenderPass;
-use vulkano::sync::GpuFuture;
-use vulkano::{single_pass_renderpass, sync};
+use vulkano::single_pass_renderpass;
 use vulkano_util::context::VulkanoContext;
 use vulkano_util::window::{VulkanoWindows, WindowDescriptor, WindowMode};
 use winit::event_loop::ActiveEventLoop;
@@ -17,13 +15,11 @@ use winit::window::WindowId;
 use super::context::RenderContext;
 use super::pipeline::create_graphics_pipeline;
 use crate::models::{INDICES, POSITIONS, Position};
-use crate::shaders::vs;
 
-pub struct RenderContextBuilder<'a> {
+pub struct RenderContextBuilder {
     basic_cntx: Arc<VulkanoContext>,
     window_ctx: VulkanoWindows,
     id: WindowId,
-    event_loop: &'a ActiveEventLoop,
     render_pass: Option<Arc<RenderPass>>,
     pipeline: Option<Arc<GraphicsPipeline>>,
     vertex_buffer: Option<Subbuffer<[Position]>>,
@@ -31,7 +27,7 @@ pub struct RenderContextBuilder<'a> {
     uniform_allocator: Option<SubbufferAllocator>,
 }
 
-impl<'a> RenderContextBuilder<'a> {
+impl<'a> RenderContextBuilder {
     pub fn new(event_loop: &'a ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
         let mut window_ctx = VulkanoWindows::default();
         let window_descr = WindowDescriptor {
@@ -45,7 +41,6 @@ impl<'a> RenderContextBuilder<'a> {
             window_ctx,
             id,
             basic_cntx,
-            event_loop,
             render_pass: None,
             // framebuffers: None,
             pipeline: None,
@@ -151,7 +146,6 @@ impl<'a> RenderContextBuilder<'a> {
 
     pub fn build(self) -> RenderContext {
         RenderContext {
-            bctx: self.basic_cntx.clone(),
             window_ctx: self.window_ctx,
             id: self.id,
             render_pass: self.render_pass.unwrap().clone(),
@@ -164,7 +158,6 @@ impl<'a> RenderContextBuilder<'a> {
             vertex_buffer: self.vertex_buffer.unwrap().clone(),
             index_buffer: self.index_buffer.unwrap().clone(),
             uniform_allocator: self.uniform_allocator.unwrap(),
-            previous_frame_end: Some(sync::now(self.basic_cntx.device().clone()).boxed()),
         }
     }
 }

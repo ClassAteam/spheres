@@ -5,7 +5,7 @@ use vulkano::{image::view::ImageView, sync::GpuFuture};
 use vulkano_util::renderer::VulkanoWindowRenderer;
 use winit::{event::WindowEvent, event_loop::ActiveEventLoop};
 
-use crate::{counter::FpsCounter, transform::TransformState};
+use crate::{counter::FpsCounter, render::RenderContext, transform::TransformState};
 
 pub struct DebugRenderer {
     gui: Gui,
@@ -85,11 +85,38 @@ impl DebugRenderer {
         });
     }
 
-    pub fn draw(
+    fn draw(
         &mut self,
         image_view: Arc<ImageView>,
         last_future: Box<dyn GpuFuture>,
     ) -> Box<dyn GpuFuture> {
         self.gui.draw_on_image(last_future, image_view)
+    }
+
+    pub fn draw_ui(
+        &mut self,
+        rdx: &RenderContext,
+        fps_counter: &FpsCounter,
+        transform: &TransformState,
+        last_future: Box<dyn GpuFuture>,
+    ) -> Box<dyn GpuFuture> {
+        let window_id = rdx.id;
+
+        let aspect_ratio = rdx
+            .window_ctx
+            .get_renderer(window_id)
+            .unwrap()
+            .aspect_ratio();
+
+        self.create_ui(fps_counter, transform, aspect_ratio);
+
+        let image_view = rdx
+            .window_ctx
+            .get_renderer(window_id)
+            .unwrap()
+            .swapchain_image_view();
+
+        let after_debug_ui = self.draw(image_view, last_future);
+        after_debug_ui
     }
 }

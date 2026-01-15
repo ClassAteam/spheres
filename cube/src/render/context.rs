@@ -1,8 +1,6 @@
-use egui_winit_vulkano::{Gui, egui};
-use std::boxed;
 use std::sync::Arc;
-use vulkano::buffer::allocator::SubbufferAllocator;
 use vulkano::buffer::Subbuffer;
+use vulkano::buffer::allocator::SubbufferAllocator;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
@@ -12,7 +10,6 @@ use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
 use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
-use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano_util::context::VulkanoContext;
 use vulkano_util::window::VulkanoWindows;
@@ -20,14 +17,11 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
-use crate::counter::FpsCounter;
-use crate::debug_gui::DebugRenderer;
 use crate::models::Position;
 use crate::shaders::vs;
 use crate::transform::TransformState;
 
 pub struct RenderContext {
-    pub bctx: Arc<VulkanoContext>,
     pub window_ctx: VulkanoWindows,
     pub id: WindowId,
     pub render_pass: Arc<RenderPass>,
@@ -35,7 +29,6 @@ pub struct RenderContext {
     pub vertex_buffer: Subbuffer<[Position]>,
     pub index_buffer: Subbuffer<[u16]>,
     pub uniform_allocator: SubbufferAllocator,
-    pub previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
 
 impl RenderContext {
@@ -49,14 +42,26 @@ impl RenderContext {
             .build()
     }
 
-    pub fn draw(
+    pub fn draw_cube(
         &mut self,
         acquire_future: Box<dyn GpuFuture>,
         cb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
     ) -> Box<dyn GpuFuture> {
-        let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform);
+        let mut cb = AutoCommandBufferBuilder::primary(
+            cb_alloc,
+            self.window_ctx
+                .get_primary_renderer()
+                .as_ref()
+                .unwrap()
+                .graphics_queue()
+                .queue_family_index(),
+            vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        self.record_cube_commands(desc_alloc, transform, &mut cb);
 
         let after_cube = acquire_future
             .then_execute(
@@ -65,7 +70,7 @@ impl RenderContext {
                     .unwrap()
                     .graphics_queue()
                     .clone(),
-                command_buffer,
+                cb.build().unwrap(),
             )
             .unwrap()
             .boxed();
@@ -73,12 +78,12 @@ impl RenderContext {
         after_cube
     }
 
-    pub fn build_cmd_buf(
+    pub fn record_cube_commands(
         &mut self,
-        cmb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
-    ) -> Arc<PrimaryAutoCommandBuffer> {
+        cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    ) {
         let uniform_buffer = self.update_uniform(transform);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(
@@ -86,17 +91,6 @@ impl RenderContext {
             layout,
             [WriteDescriptorSet::buffer(0, uniform_buffer)],
             [],
-        )
-        .unwrap();
-        let mut cb = AutoCommandBufferBuilder::primary(
-            cmb_alloc,
-            self.window_ctx
-                .get_primary_renderer()
-                .as_ref()
-                .unwrap()
-                .graphics_queue()
-                .queue_family_index(),
-            vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
@@ -163,10 +157,6 @@ impl RenderContext {
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
 
         cb.end_render_pass(Default::default()).unwrap();
-
-        let command_buffer = cb.build().unwrap();
-
-        command_buffer
     }
 
     pub fn update_uniform(&self, transform: &TransformState) -> Subbuffer<vs::Data> {
