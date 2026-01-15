@@ -1,5 +1,7 @@
 use egui_winit_vulkano::{Gui, egui};
+use std::boxed;
 use std::sync::Arc;
+use vulkano::buffer::allocator::SubbufferAllocator;
 use vulkano::buffer::Subbuffer;
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -19,6 +21,7 @@ use winit::window::WindowId;
 
 use super::builder::RenderContextBuilder;
 use crate::counter::FpsCounter;
+use crate::debug_gui::DebugRenderer;
 use crate::models::Position;
 use crate::shaders::vs;
 use crate::transform::TransformState;
@@ -31,9 +34,8 @@ pub struct RenderContext {
     pub pipeline: Arc<GraphicsPipeline>,
     pub vertex_buffer: Subbuffer<[Position]>,
     pub index_buffer: Subbuffer<[u16]>,
-    pub uniform_buffers: Vec<Subbuffer<vs::Data>>,
+    pub uniform_allocator: SubbufferAllocator,
     pub previous_frame_end: Option<Box<dyn GpuFuture>>,
-    pub gui: Gui,
 }
 
 impl RenderContext {
@@ -49,86 +51,14 @@ impl RenderContext {
 
     pub fn draw(
         &mut self,
+        acquire_future: Box<dyn GpuFuture>,
         cb_alloc: Arc<StandardCommandBufferAllocator>,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         transform: &TransformState,
-        fps_counter: &FpsCounter,
-    ) {
-        let acquire_result = self
-            .window_ctx
-            .get_renderer_mut(self.id)
-            .unwrap()
-            .acquire(None, |_| {});
-
+    ) -> Box<dyn GpuFuture> {
         let command_buffer = self.build_cmd_buf(cb_alloc, desc_alloc, transform);
 
-        let aspect_ratio = self
-            .window_ctx
-            .get_renderer(self.id)
-            .unwrap()
-            .aspect_ratio();
-
-        self.gui.immediate_ui(|gui| {
-            let ctx = gui.context();
-            egui::Window::new("Debug Info")
-                .default_pos(egui::pos2(10.0, 10.0))
-                .resizable(true)
-                .default_width(1000.0)
-                .show(&ctx, |ui| {
-                    ui.label(format!("FPS: {:.1}", fps_counter.fps()));
-                    ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
-
-                    ui.separator();
-                    ui.heading("Transform State");
-                    ui.label(format!("{:#?}", transform));
-
-                    ui.separator();
-                    ui.heading("Vertices (Original)");
-                    egui::ScrollArea::vertical()
-                        .id_salt("original_vertices")
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            ui.label(format!("{:#?}", crate::models::POSITIONS));
-                        });
-
-                    ui.separator();
-                    ui.heading("Vertices (Transformed)");
-                    egui::ScrollArea::vertical()
-                        .id_salt("transformed_vertices")
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for (i, vertex) in crate::models::POSITIONS.iter().enumerate() {
-                                let transformed = transform.transform_vertex(vertex.position, aspect_ratio);
-                                ui.label(format!(
-                                    "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]",
-                                    i,
-                                    transformed.clip_space[0],
-                                    transformed.clip_space[1],
-                                    transformed.clip_space[2],
-                                    transformed.clip_space[3],
-                                    transformed.ndc[0],
-                                    transformed.ndc[1],
-                                    transformed.ndc[2]
-                                ));
-                            }
-                        });
-                });
-        });
-
-        let acquire_future = match acquire_result {
-            Ok(future) => future,
-
-            Err(vulkano::VulkanError::OutOfDate) => {
-                self.window_ctx.get_renderer_mut(self.id).unwrap().resize();
-                return;
-            }
-            _ => {
-                panic!("something went wrong with acquiring the swapchain index")
-            }
-        };
-
         let after_cube = acquire_future
-            .join(self.previous_frame_end.take().unwrap())
             .then_execute(
                 self.window_ctx
                     .get_renderer(self.id)
@@ -137,22 +67,10 @@ impl RenderContext {
                     .clone(),
                 command_buffer,
             )
-            .unwrap();
-
-        let final_future = self.gui.draw_on_image(
-            after_cube,
-            self.window_ctx
-                .get_renderer(self.id)
-                .unwrap()
-                .swapchain_image_view(),
-        );
-
-        self.window_ctx
-            .get_renderer_mut(self.id)
             .unwrap()
-            .present(final_future, true);
+            .boxed();
 
-        self.previous_frame_end = Some(sync::now(self.bctx.device().clone()).boxed());
+        after_cube
     }
 
     pub fn build_cmd_buf(
@@ -264,12 +182,38 @@ impl RenderContext {
             mvp: mvp.to_cols_array_2d(),
         };
 
-        let buffer = self.uniform_buffers
-            [self.window_ctx.get_renderer(self.id).unwrap().image_index() as usize]
-            .clone();
+        // Allocate a fresh subbuffer each frame - no synchronization needed!
+        let subbuffer = self.uniform_allocator.allocate_sized().unwrap();
+        *subbuffer.write().unwrap() = uniform_data;
 
-        *buffer.write().unwrap() = uniform_data;
+        subbuffer
+    }
 
-        buffer
+    pub fn acquire(&mut self) -> Box<dyn GpuFuture> {
+        loop {
+            let acquire_result = self
+                .window_ctx
+                .get_renderer_mut(self.id)
+                .unwrap()
+                .acquire(None, |_| {});
+
+            match acquire_result {
+                Ok(future) => return future,
+
+                Err(vulkano::VulkanError::OutOfDate) => {
+                    self.window_ctx.get_renderer_mut(self.id).unwrap().resize();
+                }
+                Err(e) => {
+                    panic!("failed to acquire swapchain image: {:?}", e)
+                }
+            }
+        }
+    }
+
+    pub fn present(&mut self, til_present_future: Box<dyn GpuFuture>) {
+        self.window_ctx
+            .get_renderer_mut(self.id)
+            .unwrap()
+            .present(til_present_future, false);
     }
 }

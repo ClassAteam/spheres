@@ -1,5 +1,6 @@
 use egui_winit_vulkano::Gui;
 use std::sync::Arc;
+use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::format::Format;
 use vulkano::image::ImageUsage;
@@ -27,7 +28,7 @@ pub struct RenderContextBuilder<'a> {
     pipeline: Option<Arc<GraphicsPipeline>>,
     vertex_buffer: Option<Subbuffer<[Position]>>,
     index_buffer: Option<Subbuffer<[u16]>>,
-    uniform_buffers: Option<Vec<Subbuffer<vs::Data>>>,
+    uniform_allocator: Option<SubbufferAllocator>,
 }
 
 impl<'a> RenderContextBuilder<'a> {
@@ -50,7 +51,7 @@ impl<'a> RenderContextBuilder<'a> {
             pipeline: None,
             vertex_buffer: None,
             index_buffer: None,
-            uniform_buffers: None,
+            uniform_allocator: None,
         }
     }
 
@@ -93,31 +94,17 @@ impl<'a> RenderContextBuilder<'a> {
     }
 
     pub fn with_uniform_buffers(mut self) -> Self {
-        let uniform_buffers = (0..self
-            .window_ctx
-            .get_renderer(self.id)
-            .unwrap()
-            .swapchain_image_views()
-            .iter()
-            .count())
-            .map(|_| {
-                Buffer::new_sized(
-                    self.basic_cntx.memory_allocator().clone(),
-                    BufferCreateInfo {
-                        usage: BufferUsage::UNIFORM_BUFFER,
-                        ..Default::default()
-                    },
-                    AllocationCreateInfo {
-                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                        ..Default::default()
-                    },
-                )
-                .unwrap()
-            })
-            .collect();
+        let uniform_allocator = SubbufferAllocator::new(
+            self.basic_cntx.memory_allocator().clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+        );
 
-        self.uniform_buffers = Some(uniform_buffers);
+        self.uniform_allocator = Some(uniform_allocator);
         self
     }
 
@@ -163,20 +150,6 @@ impl<'a> RenderContextBuilder<'a> {
     }
 
     pub fn build(self) -> RenderContext {
-        let renderer = self.window_ctx.get_renderer(self.id).unwrap();
-        let surface = renderer.surface();
-
-        let gui = Gui::new(
-            self.event_loop,
-            surface.clone(),
-            renderer.graphics_queue().clone(),
-            renderer.swapchain_format(),
-            egui_winit_vulkano::GuiConfig {
-                is_overlay: true,
-                ..Default::default()
-            },
-        );
-
         RenderContext {
             bctx: self.basic_cntx.clone(),
             window_ctx: self.window_ctx,
@@ -190,9 +163,8 @@ impl<'a> RenderContextBuilder<'a> {
                 .clone(),
             vertex_buffer: self.vertex_buffer.unwrap().clone(),
             index_buffer: self.index_buffer.unwrap().clone(),
-            uniform_buffers: self.uniform_buffers.unwrap().clone(),
+            uniform_allocator: self.uniform_allocator.unwrap(),
             previous_frame_end: Some(sync::now(self.basic_cntx.device().clone()).boxed()),
-            gui,
         }
     }
 }
