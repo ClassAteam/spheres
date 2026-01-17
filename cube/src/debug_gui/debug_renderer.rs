@@ -41,50 +41,57 @@ impl DebugRenderer {
             let ctx = gui.context();
             egui::Window::new("Debug Info")
                 .default_pos(egui::pos2(10.0, 10.0))
-                .resizable(true)
+                .resizable(false)
                 .default_width(1000.0)
                 .show(&ctx, |ui| {
-                    ui.label(format!("FPS: {:.1}", fps_counter.fps()));
-                    ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
-
+                    Self::show_fps(ui, fps_counter);
                     ui.separator();
-                    ui.heading("Transform State");
-                    ui.label(format!("{:#?}", transform));
 
-                    ui.separator();
-                    ui.heading("Vertices (Original)");
-                    egui::ScrollArea::vertical()
-                        .id_salt("original_vertices")
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            ui.label(format!("{:#?}", crate::models::POSITIONS));
-                        });
-
-                    ui.separator();
-                    ui.heading("Vertices (Transformed)");
-                    egui::ScrollArea::vertical()
-                        .id_salt("transformed_vertices")
-                        .max_height(200.0)
-                        .show(ui, |ui| {
-                            for (i, vertex) in crate::models::POSITIONS.iter().enumerate() {
-                                let transformed = transform.transform_vertex(vertex.position, aspect_ratio);
-                                ui.label(format!(
-                                    "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]",
-                                    i,
-                                    transformed.clip_space[0],
-                                    transformed.clip_space[1],
-                                    transformed.clip_space[2],
-                                    transformed.clip_space[3],
-                                    transformed.ndc[0],
-                                    transformed.ndc[1],
-                                    transformed.ndc[2]
-                                ));
-                            }
-                        });
+                    ui.horizontal(|ui| {
+                        Self::show_transform_state(ui, transform);
+                        ui.separator();
+                        Self::show_vertices(ui, transform, aspect_ratio);
+                    });
                 });
         });
     }
 
+    fn show_fps(ui: &mut egui::Ui, fps_counter: &FpsCounter) {
+        ui.label(format!("FPS: {:.1}", fps_counter.fps()));
+        ui.label(format!("Frame Time: {:.2} ms", fps_counter.frame_time_ms()));
+    }
+
+    fn show_transform_state(ui: &mut egui::Ui, transform: &TransformState) {
+        ui.vertical(|ui| {
+            ui.heading("Transform State");
+            ui.label(format!("{:#?}", transform));
+        });
+    }
+
+    fn show_vertices(ui: &mut egui::Ui, transform: &TransformState, aspect_ratio: f32) {
+        ui.vertical(|ui| {
+            ui.heading("Vertices (Transformed)");
+
+            egui::ScrollArea::vertical()
+                .id_salt("transformed_vertices")
+                .show(ui, |ui| {
+                    for (i, vertex) in crate::models::POSITIONS.iter().enumerate() {
+                        let transformed = transform.transform_vertex(vertex.position, aspect_ratio);
+                        ui.label(format!(
+                            "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]",
+                            i,
+                            transformed.clip_space[0],
+                            transformed.clip_space[1],
+                            transformed.clip_space[2],
+                            transformed.clip_space[3],
+                            transformed.ndc[0],
+                            transformed.ndc[1],
+                            transformed.ndc[2]
+                        ));
+                    }
+                });
+        });
+    }
     fn draw(
         &mut self,
         image_view: Arc<ImageView>,
