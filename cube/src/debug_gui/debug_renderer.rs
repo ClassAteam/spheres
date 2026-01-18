@@ -92,6 +92,7 @@ impl DebugRenderer {
                 });
         });
     }
+
     fn draw(
         &mut self,
         image_view: Arc<ImageView>,
