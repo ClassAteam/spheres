@@ -1,5 +1,5 @@
-use glam::Vec3;
 use std::sync::Arc;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -7,17 +7,17 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
 use crate::counter::FpsCounter;
-use crate::debug_gui::DebugRenderer;
+use crate::cube_pass::CubePass;
 use crate::render::RenderContext;
-use crate::transform::TransformState;
 use crate::vulkan_context::VulkanBasicContext;
+
+use vulkano::sync::GpuFuture;
 
 pub struct App {
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
-    pub dbg_render: Option<DebugRenderer>,
-    transform: TransformState,
     fps_counter: FpsCounter,
+    cube: Option<CubePass>,
 }
 
 impl App {
@@ -25,10 +25,9 @@ impl App {
         let context = VulkanBasicContext::new();
         App {
             basic_context: Arc::new(context),
-            transform: TransformState::new(),
-            rdx: None,
             fps_counter: FpsCounter::new(),
-            dbg_render: None,
+            rdx: None,
+            cube: None,
         }
     }
 }
@@ -40,26 +39,19 @@ impl ApplicationHandler for App {
             self.basic_context.bctx.clone(),
         ));
 
-        self.dbg_render = Some(DebugRenderer::new(
-            event_loop,
+        let id = self.rdx.as_ref().unwrap().id;
+        self.cube = Some(CubePass::new(
             self.rdx
-                .as_ref()
+                .as_mut()
                 .unwrap()
                 .window_ctx
-                .get_renderer(self.rdx.as_ref().unwrap().id)
+                .get_renderer_mut(id)
                 .unwrap(),
-        ))
+            self.basic_context.bctx.as_ref(),
+        ));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        if let Some(_) = &mut self.rdx {
-            let consumed = self.dbg_render.as_mut().unwrap().update(&event);
-
-            if consumed {
-                return;
-            }
-        }
-
         match event {
             WindowEvent::CloseRequested => {
                 println!("The close button was pressed; stopping");
@@ -67,23 +59,51 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 self.fps_counter.update();
+
                 let acquired_future = self.rdx.as_mut().unwrap().acquire();
-                let after_cube_future = self.rdx.as_mut().unwrap().draw_cube(
-                    acquired_future,
+
+                let mut cb = AutoCommandBufferBuilder::primary(
                     self.basic_context.cb_alloc.clone(),
+                    self.rdx
+                        .as_ref()
+                        .unwrap()
+                        .window_ctx
+                        .get_primary_renderer()
+                        .as_ref()
+                        .unwrap()
+                        .graphics_queue()
+                        .queue_index(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+
+                self.cube.as_mut().unwrap().update_uniform_and_create_pass(
                     self.basic_context.descriptor_set_allocator.clone(),
-                    &self.transform,
-                );
-
-                let after_debug_ui = self.dbg_render.as_mut().unwrap().draw_ui(
                     self.rdx.as_mut().unwrap(),
-                    &self.fps_counter,
-                    &self.transform,
-                    after_cube_future,
+                    &mut cb,
                 );
 
-                self.rdx.as_mut().unwrap().present(after_debug_ui);
+                let command_buffer = cb.build().unwrap();
+
+                let queue = self
+                    .rdx
+                    .as_ref()
+                    .unwrap()
+                    .window_ctx
+                    .get_primary_renderer()
+                    .unwrap()
+                    .graphics_queue()
+                    .clone();
+
+                let after_cube_future =
+                    acquired_future.then_execute(queue, command_buffer).unwrap();
+
+                self.rdx
+                    .as_mut()
+                    .unwrap()
+                    .present(Box::new(after_cube_future));
             }
+
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -93,10 +113,10 @@ impl ApplicationHandler for App {
                     },
                 ..
             } => match key_code {
-                KeyCode::KeyL => self.transform.rotate_model(Vec3::new(0.0, -0.01, 0.0)),
-                KeyCode::KeyH => self.transform.rotate_model(Vec3::new(0.0, 0.01, 0.0)),
-                KeyCode::KeyJ => self.transform.rotate_model(Vec3::new(-0.01, 0.0, 0.0)),
-                KeyCode::KeyK => self.transform.rotate_model(Vec3::new(0.01, 0.0, 0.0)),
+                KeyCode::KeyL => self.cube.as_mut().unwrap().rotate_cube_y_left(),
+                KeyCode::KeyH => self.cube.as_mut().unwrap().rotate_cube_y_right(),
+                KeyCode::KeyJ => self.cube.as_mut().unwrap().rotate_cube_x_up(),
+                KeyCode::KeyK => self.cube.as_mut().unwrap().rotate_cube_x_down(),
                 KeyCode::Escape => event_loop.exit(),
                 _ => (),
             },

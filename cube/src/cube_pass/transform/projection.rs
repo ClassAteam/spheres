@@ -16,7 +16,7 @@ impl ProjectionParams {
 impl Default for ProjectionParams {
     fn default() -> Self {
         Self {
-            fov: 120.0_f32.to_radians(),
+            fov: 90.0_f32.to_radians(),
             near: 0.1,
             far: 100.0,
         }

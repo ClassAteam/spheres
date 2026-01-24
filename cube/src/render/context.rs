@@ -1,182 +1,44 @@
 use std::sync::Arc;
-use vulkano::buffer::Subbuffer;
-use vulkano::buffer::allocator::SubbufferAllocator;
-use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
-};
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
-use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::buffer::BufferUsage;
+use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
+use vulkano::memory::allocator::MemoryTypeFilter;
 use vulkano::sync::GpuFuture;
 use vulkano_util::context::VulkanoContext;
-use vulkano_util::window::VulkanoWindows;
+use vulkano_util::window::{VulkanoWindows, WindowDescriptor, WindowMode};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::WindowId;
-
-use super::builder::RenderContextBuilder;
-use crate::models::Position;
-use crate::shaders::vs;
-use crate::transform::TransformState;
 
 pub struct RenderContext {
     pub window_ctx: VulkanoWindows,
     pub id: WindowId,
-    pub render_pass: Arc<RenderPass>,
-    pub pipeline: Arc<GraphicsPipeline>,
-    pub vertex_buffer: Subbuffer<[Position]>,
-    pub index_buffer: Subbuffer<[u16]>,
     pub uniform_allocator: SubbufferAllocator,
 }
 
 impl RenderContext {
     pub fn new(event_loop: &ActiveEventLoop, basic_cntx: Arc<VulkanoContext>) -> Self {
-        RenderContextBuilder::new(event_loop, basic_cntx)
-            .with_render_pass()
-            .with_pipeline()
-            .with_vertex_buffers()
-            .with_index_buffer()
-            .with_uniform_buffers()
-            .build()
-    }
+        let mut window_ctx = VulkanoWindows::default();
+        let window_descr = WindowDescriptor {
+            title: "Cube".to_string(),
+            mode: WindowMode::BorderlessFullscreen,
+            ..Default::default()
+        };
+        let id = window_ctx.create_window(event_loop, &basic_cntx, &window_descr, |_| {});
 
-    pub fn draw_cube(
-        &mut self,
-        acquire_future: Box<dyn GpuFuture>,
-        cb_alloc: Arc<StandardCommandBufferAllocator>,
-        desc_alloc: Arc<StandardDescriptorSetAllocator>,
-        transform: &TransformState,
-    ) -> Box<dyn GpuFuture> {
-        let mut cb = AutoCommandBufferBuilder::primary(
-            cb_alloc,
-            self.window_ctx
-                .get_primary_renderer()
-                .as_ref()
-                .unwrap()
-                .graphics_queue()
-                .queue_family_index(),
-            vulkano::command_buffer::CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
-
-        self.record_cube_commands(desc_alloc, transform, &mut cb);
-
-        let after_cube = acquire_future
-            .then_execute(
-                self.window_ctx
-                    .get_renderer(self.id)
-                    .unwrap()
-                    .graphics_queue()
-                    .clone(),
-                cb.build().unwrap(),
-            )
-            .unwrap()
-            .boxed();
-
-        after_cube
-    }
-
-    pub fn record_cube_commands(
-        &mut self,
-        desc_mem_alloc: Arc<StandardDescriptorSetAllocator>,
-        transform: &TransformState,
-        cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-    ) {
-        let uniform_buffer = self.update_uniform(transform);
-        let layout = self.pipeline.layout().set_layouts()[0].clone();
-        let descriptor_set = DescriptorSet::new(
-            desc_mem_alloc,
-            layout,
-            [WriteDescriptorSet::buffer(0, uniform_buffer)],
-            [],
-        )
-        .unwrap();
-
-        let image = self
-            .window_ctx
-            .get_renderer(self.id)
-            .unwrap()
-            .swapchain_image_view();
-
-        let depth_view = self
-            .window_ctx
-            .get_renderer_mut(self.id)
-            .unwrap()
-            .get_additional_image_view(0);
-
-        let framebuffer = Framebuffer::new(
-            self.render_pass.clone(),
-            FramebufferCreateInfo {
-                attachments: vec![image, depth_view],
+        let uniform_allocator = SubbufferAllocator::new(
+            basic_cntx.memory_allocator().clone(),
+            SubbufferAllocatorCreateInfo {
+                buffer_usage: BufferUsage::UNIFORM_BUFFER,
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-        )
-        .unwrap();
+        );
 
-        let render_pass_begin_info = RenderPassBeginInfo {
-            clear_values: vec![
-                Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
-                Some(1.0.into()),                  // Depth attachment
-            ],
-            ..RenderPassBeginInfo::framebuffer(framebuffer)
-        };
-
-        cb.begin_render_pass(render_pass_begin_info, Default::default())
-            .unwrap();
-
-        let viewport = Viewport {
-            offset: [0.0, 0.0],
-            extent: self
-                .window_ctx
-                .get_renderer(self.id)
-                .unwrap()
-                .swapchain_image_size()
-                .map(|v| v as f32),
-            depth_range: 0.0..=1.0,
-        };
-        cb.set_viewport(0, [viewport].into_iter().collect())
-            .unwrap();
-
-        cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
-
-        cb.bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            self.pipeline.layout().clone(),
-            0,
-            descriptor_set,
-        )
-        .unwrap();
-
-        cb.bind_vertex_buffers(0, self.vertex_buffer.clone())
-            .unwrap();
-
-        cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
-
-        unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
-
-        cb.end_render_pass(Default::default()).unwrap();
-    }
-
-    pub fn update_uniform(&self, transform: &TransformState) -> Subbuffer<vs::Data> {
-        let aspect_ratio = self
-            .window_ctx
-            .get_renderer(self.id)
-            .unwrap()
-            .aspect_ratio();
-
-        let mvp = transform.compute_mvp(aspect_ratio);
-
-        let uniform_data = vs::Data {
-            mvp: mvp.to_cols_array_2d(),
-        };
-
-        // Allocate a fresh subbuffer each frame - no synchronization needed!
-        let subbuffer = self.uniform_allocator.allocate_sized().unwrap();
-        *subbuffer.write().unwrap() = uniform_data;
-
-        subbuffer
+        Self {
+            window_ctx,
+            id,
+            uniform_allocator,
+        }
     }
 
     pub fn acquire(&mut self) -> Box<dyn GpuFuture> {

@@ -2,11 +2,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
 mod counter;
-mod debug_gui;
-mod models;
+mod cube_pass;
 mod render;
-mod shaders;
-mod transform;
 mod vulkan_context;
 
 use app::App;
