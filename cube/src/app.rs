@@ -6,6 +6,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
+use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
 use crate::debug_gui::DebugRenderer;
@@ -15,6 +16,7 @@ use crate::vulkan_context::VulkanBasicContext;
 use vulkano::sync::GpuFuture;
 
 pub struct App {
+    pub config: AppConfig,
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
     fps_counter: FpsCounter,
@@ -26,12 +28,17 @@ impl App {
     pub fn new() -> Self {
         let context = VulkanBasicContext::new();
         App {
+            config: Default::default(),
             basic_context: Arc::new(context),
             fps_counter: FpsCounter::new(),
             rdx: None,
             cube: None,
             debug_renderer: None,
         }
+    }
+
+    pub fn toggle_debug_ui(&mut self) {
+        self.config.debug_ui_enabled = !self.config.debug_ui_enabled;
     }
 }
 
@@ -54,15 +61,19 @@ impl ApplicationHandler for App {
             self.basic_context.bctx.as_ref(),
         ));
 
-        self.debug_renderer = Some(DebugRenderer::new(
-            event_loop,
-            self.rdx
-                .as_mut()
-                .unwrap()
-                .window_ctx
-                .get_renderer_mut(id)
-                .unwrap(),
-        ));
+        self.debug_renderer = if self.config.debug_ui_enabled {
+            Some(DebugRenderer::new(
+                event_loop,
+                self.rdx
+                    .as_mut()
+                    .unwrap()
+                    .window_ctx
+                    .get_renderer_mut(id)
+                    .unwrap(),
+            ))
+        } else {
+            None
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -109,20 +120,20 @@ impl ApplicationHandler for App {
                     .graphics_queue()
                     .clone();
 
-                let after_cube_future =
-                    acquired_future.then_execute(queue, command_buffer).unwrap();
+                let mut final_future: Box<dyn GpuFuture> =
+                    Box::new(acquired_future.then_execute(queue, command_buffer).unwrap());
 
-                let after_debug_gui_future = self.debug_renderer.as_mut().unwrap().draw_ui(
-                    self.rdx.as_mut().unwrap(),
-                    &self.fps_counter,
-                    self.cube.as_ref().unwrap().get_transform_state(),
-                    Box::new(after_cube_future),
-                );
+                if let Some(debug_renderer) = self.debug_renderer.as_mut() {
+                    final_future = debug_renderer.draw_ui(
+                        self.rdx.as_mut().unwrap(),
+                        &self.fps_counter,
+                        self.cube.as_ref().unwrap().get_transform_state(),
+                        final_future,
+                        self.config.debug_ui_enabled, // Pass the visibility flag
+                    );
+                }
 
-                self.rdx
-                    .as_mut()
-                    .unwrap()
-                    .present(Box::new(after_debug_gui_future));
+                self.rdx.as_mut().unwrap().present(Box::new(final_future));
             }
 
             WindowEvent::KeyboardInput {
@@ -138,7 +149,9 @@ impl ApplicationHandler for App {
                 KeyCode::KeyH => self.cube.as_mut().unwrap().rotate_cube_y_right(),
                 KeyCode::KeyJ => self.cube.as_mut().unwrap().rotate_cube_x_up(),
                 KeyCode::KeyK => self.cube.as_mut().unwrap().rotate_cube_x_down(),
+                KeyCode::KeyD => self.toggle_debug_ui(),
                 KeyCode::Escape => event_loop.exit(),
+
                 _ => (),
             },
             _ => (),

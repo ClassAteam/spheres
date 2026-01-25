@@ -111,16 +111,20 @@ impl DebugRenderer {
         fps_counter: &FpsCounter,
         transform: &TransformState,
         last_future: Box<dyn GpuFuture>,
+        visible: bool,
     ) -> Box<dyn GpuFuture> {
         let window_id = rdx.id;
 
-        let aspect_ratio = rdx
-            .window_ctx
-            .get_renderer(window_id)
-            .unwrap()
-            .aspect_ratio();
+        // Only create UI content if visible
+        if visible {
+            let aspect_ratio = rdx
+                .window_ctx
+                .get_renderer(window_id)
+                .unwrap()
+                .aspect_ratio();
 
-        self.create_ui(fps_counter, transform, aspect_ratio);
+            self.create_ui(fps_counter, transform, aspect_ratio);
+        }
 
         let image_view = rdx
             .window_ctx
@@ -128,6 +132,7 @@ impl DebugRenderer {
             .unwrap()
             .swapchain_image_view();
 
+        // Always call draw for proper Vulkan synchronization (even if UI is empty)
         let after_debug_ui = self.draw(image_view, last_future);
         after_debug_ui
     }

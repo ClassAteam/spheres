@@ -1,6 +1,7 @@
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
+mod config;
 mod counter;
 mod cube_pass;
 mod debug_gui;
