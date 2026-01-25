@@ -1,7 +1,4 @@
 use std::sync::Arc;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo};
-use vulkano::memory::allocator::MemoryTypeFilter;
 use vulkano::sync::GpuFuture;
 use vulkano_util::context::VulkanoContext;
 use vulkano_util::window::{VulkanoWindows, WindowDescriptor, WindowMode};
@@ -11,7 +8,6 @@ use winit::window::WindowId;
 pub struct RenderContext {
     pub window_ctx: VulkanoWindows,
     pub id: WindowId,
-    pub uniform_allocator: SubbufferAllocator,
 }
 
 impl RenderContext {
@@ -24,21 +20,7 @@ impl RenderContext {
         };
         let id = window_ctx.create_window(event_loop, &basic_cntx, &window_descr, |_| {});
 
-        let uniform_allocator = SubbufferAllocator::new(
-            basic_cntx.memory_allocator().clone(),
-            SubbufferAllocatorCreateInfo {
-                buffer_usage: BufferUsage::UNIFORM_BUFFER,
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-        );
-
-        Self {
-            window_ctx,
-            id,
-            uniform_allocator,
-        }
+        Self { window_ctx, id }
     }
 
     pub fn acquire(&mut self) -> Box<dyn GpuFuture> {

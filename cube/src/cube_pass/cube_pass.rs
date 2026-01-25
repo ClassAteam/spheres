@@ -6,10 +6,7 @@ use vulkano::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
     },
-    command_buffer::{
-        AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
-        allocator::StandardCommandBufferAllocator,
-    },
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo},
     descriptor_set::{
         DescriptorSet, WriteDescriptorSet,
         allocator::StandardDescriptorSetAllocator,
@@ -18,7 +15,6 @@ use vulkano::{
             DescriptorType,
         },
     },
-    device::Device,
     format::Format,
     image::ImageUsage,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
@@ -40,7 +36,6 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     shader::ShaderStages,
     single_pass_renderpass,
-    sync::GpuFuture,
 };
 use vulkano_util::{context::VulkanoContext, renderer::VulkanoWindowRenderer};
 
@@ -80,6 +75,10 @@ impl CubePass {
             transform: TransformState::new(),
             uniform_allocator,
         }
+    }
+
+    pub fn get_transform_state(&self) -> &TransformState {
+        &self.transform
     }
 
     pub fn rotate_cube_y_left(&mut self) {

@@ -8,6 +8,7 @@ use winit::window::WindowId;
 
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
+use crate::debug_gui::DebugRenderer;
 use crate::render::RenderContext;
 use crate::vulkan_context::VulkanBasicContext;
 
@@ -18,6 +19,7 @@ pub struct App {
     pub rdx: Option<RenderContext>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
+    debug_renderer: Option<DebugRenderer>,
 }
 
 impl App {
@@ -28,6 +30,7 @@ impl App {
             fps_counter: FpsCounter::new(),
             rdx: None,
             cube: None,
+            debug_renderer: None,
         }
     }
 }
@@ -40,6 +43,7 @@ impl ApplicationHandler for App {
         ));
 
         let id = self.rdx.as_ref().unwrap().id;
+
         self.cube = Some(CubePass::new(
             self.rdx
                 .as_mut()
@@ -48,6 +52,16 @@ impl ApplicationHandler for App {
                 .get_renderer_mut(id)
                 .unwrap(),
             self.basic_context.bctx.as_ref(),
+        ));
+
+        self.debug_renderer = Some(DebugRenderer::new(
+            event_loop,
+            self.rdx
+                .as_mut()
+                .unwrap()
+                .window_ctx
+                .get_renderer_mut(id)
+                .unwrap(),
         ));
     }
 
@@ -98,10 +112,17 @@ impl ApplicationHandler for App {
                 let after_cube_future =
                     acquired_future.then_execute(queue, command_buffer).unwrap();
 
+                let after_debug_gui_future = self.debug_renderer.as_mut().unwrap().draw_ui(
+                    self.rdx.as_mut().unwrap(),
+                    &self.fps_counter,
+                    self.cube.as_ref().unwrap().get_transform_state(),
+                    Box::new(after_cube_future),
+                );
+
                 self.rdx
                     .as_mut()
                     .unwrap()
-                    .present(Box::new(after_cube_future));
+                    .present(Box::new(after_debug_gui_future));
             }
 
             WindowEvent::KeyboardInput {

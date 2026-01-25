@@ -3,6 +3,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 mod app;
 mod counter;
 mod cube_pass;
+mod debug_gui;
 mod render;
 mod vulkan_context;
 

@@ -3,9 +3,13 @@ use std::sync::Arc;
 use egui_winit_vulkano::{Gui, egui};
 use vulkano::{image::view::ImageView, sync::GpuFuture};
 use vulkano_util::renderer::VulkanoWindowRenderer;
-use winit::{event::WindowEvent, event_loop::ActiveEventLoop};
+use winit::event_loop::ActiveEventLoop;
 
-use crate::{counter::FpsCounter, render::RenderContext, transform::TransformState};
+use crate::{
+    counter::FpsCounter,
+    cube_pass::{self, TransformState},
+    render::RenderContext,
+};
 
 pub struct DebugRenderer {
     gui: Gui,
@@ -27,9 +31,9 @@ impl DebugRenderer {
         Self { gui }
     }
 
-    pub fn update(&mut self, event: &WindowEvent) -> bool {
-        self.gui.update(event)
-    }
+    // pub fn update(&mut self, event: &WindowEvent) -> bool {
+    //     self.gui.update(event)
+    // }
 
     pub fn create_ui(
         &mut self,
@@ -75,7 +79,7 @@ impl DebugRenderer {
             egui::ScrollArea::vertical()
                 .id_salt("transformed_vertices")
                 .show(ui, |ui| {
-                    for (i, vertex) in crate::models::POSITIONS.iter().enumerate() {
+                    for (i, vertex) in cube_pass::POSITIONS.iter().enumerate() {
                         let transformed = transform.transform_vertex(vertex.position, aspect_ratio);
                         ui.label(format!(
                             "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]",
