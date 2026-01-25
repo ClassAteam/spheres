@@ -94,6 +94,87 @@ impl CubePass {
         self.transform.rotate_model(Vec3::new(0.01, 0.0, 0.0));
     }
 
+    pub fn translate_cube_x_right(&mut self) {
+        self.transform.translate_model(Vec3::new(0.01, 0.0, 0.0));
+    }
+    pub fn translate_cube_x_left(&mut self) {
+        self.transform.translate_model(Vec3::new(-0.01, 0.0, 0.0));
+    }
+    pub fn translate_cube_y_down(&mut self) {
+        self.transform.translate_model(Vec3::new(0.0, 0.01, 0.0));
+    }
+    pub fn translate_cube_y_up(&mut self) {
+        self.transform.translate_model(Vec3::new(0.0, -0.01, 0.0));
+    }
+    pub fn translate_cube_z_down(&mut self) {
+        self.transform.translate_model(Vec3::new(0.0, 0.0, 0.01));
+    }
+    pub fn translate_cube_z_up(&mut self) {
+        self.transform.translate_model(Vec3::new(0.0, 0.0, -0.01));
+    }
+
+    pub fn scale_cube_up(&mut self) {
+        self.transform.scale_model(Vec3::new(0.01, 0.01, 0.01));
+    }
+    pub fn scale_cube_down(&mut self) {
+        self.transform.scale_model(Vec3::new(-0.01, -0.01, -0.01));
+    }
+
+    pub fn camera_position_x_up(&mut self) {
+        self.transform.camera_position(Vec3::new(0.01, 0.0, 0.0));
+    }
+    pub fn camera_position_x_down(&mut self) {
+        self.transform.camera_position(Vec3::new(-0.01, 0.0, 0.0));
+    }
+    pub fn camera_position_y_up(&mut self) {
+        self.transform.camera_position(Vec3::new(0.0, 0.01, 0.0));
+    }
+    pub fn camera_position_y_down(&mut self) {
+        self.transform.camera_position(Vec3::new(0.0, -0.01, 0.0));
+    }
+    pub fn camera_position_z_up(&mut self) {
+        self.transform.camera_position(Vec3::new(0.0, 0.0, 0.01));
+    }
+    pub fn camera_position_z_down(&mut self) {
+        self.transform.camera_position(Vec3::new(0.0, 0.0, -0.01));
+    }
+    pub fn camera_target_x_up(&mut self) {
+        self.transform.camera_target(Vec3::new(0.01, 0.0, 0.0));
+    }
+    pub fn camera_target_x_down(&mut self) {
+        self.transform.camera_target(Vec3::new(-0.01, 0.0, 0.0));
+    }
+    pub fn camera_target_y_up(&mut self) {
+        self.transform.camera_target(Vec3::new(0.0, 0.01, 0.0));
+    }
+    pub fn camera_target_y_down(&mut self) {
+        self.transform.camera_target(Vec3::new(0.0, -0.01, 0.0));
+    }
+    pub fn camera_target_z_up(&mut self) {
+        self.transform.camera_target(Vec3::new(0.0, 0.0, 0.01));
+    }
+    pub fn camera_target_z_down(&mut self) {
+        self.transform.camera_target(Vec3::new(0.0, 0.0, -0.01));
+    }
+    pub fn camera_up_x_up(&mut self) {
+        self.transform.camera_up(Vec3::new(0.01, 0.0, 0.0));
+    }
+    pub fn camera_up_x_down(&mut self) {
+        self.transform.camera_up(Vec3::new(-0.01, 0.0, 0.0));
+    }
+    pub fn camera_up_y_up(&mut self) {
+        self.transform.camera_up(Vec3::new(0.0, 0.01, 0.0));
+    }
+    pub fn camera_up_y_down(&mut self) {
+        self.transform.camera_up(Vec3::new(0.0, -0.01, 0.0));
+    }
+    pub fn camera_up_z_up(&mut self) {
+        self.transform.camera_up(Vec3::new(0.0, 0.0, 0.01));
+    }
+    pub fn camera_up_z_down(&mut self) {
+        self.transform.camera_up(Vec3::new(0.0, 0.0, -0.01));
+    }
+
     fn create_render_pass(
         renderer: &mut VulkanoWindowRenderer,
         basic_context: &VulkanoContext,

@@ -32,6 +32,21 @@ impl TransformState {
     pub fn rotate_model(&mut self, delta: Vec3) {
         self.model.rotation += delta;
     }
+    pub fn translate_model(&mut self, delta: Vec3) {
+        self.model.translation += delta;
+    }
+    pub fn scale_model(&mut self, delta: Vec3) {
+        self.model.scale += delta;
+    }
+    pub fn camera_position(&mut self, delta: Vec3) {
+        self.camera.position += delta;
+    }
+    pub fn camera_target(&mut self, delta: Vec3) {
+        self.camera.target += delta;
+    }
+    pub fn camera_up(&mut self, delta: Vec3) {
+        self.camera.up += delta;
+    }
 
     pub fn transform_vertex(&self, position: [f32; 3], aspect_ratio: f32) -> TransformedVertex {
         let mvp = self.compute_mvp(aspect_ratio);
