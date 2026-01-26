@@ -81,79 +81,79 @@ impl CubePass {
         &self.transform
     }
 
-    pub fn rotate_cube_y_left(&mut self) {
+    pub fn yaw_left(&mut self) {
         self.transform.rotate_model(Vec3::new(0.0, -0.01, 0.0));
     }
-    pub fn rotate_cube_y_right(&mut self) {
+    pub fn yaw_right(&mut self) {
         self.transform.rotate_model(Vec3::new(0.0, 0.01, 0.0));
     }
-    pub fn rotate_cube_x_down(&mut self) {
+    pub fn pitch_down(&mut self) {
         self.transform.rotate_model(Vec3::new(-0.01, 0.0, 0.0));
     }
-    pub fn rotate_cube_x_up(&mut self) {
+    pub fn pitch_up(&mut self) {
         self.transform.rotate_model(Vec3::new(0.01, 0.0, 0.0));
     }
 
-    pub fn translate_cube_x_right(&mut self) {
+    pub fn move_right(&mut self) {
         self.transform.translate_model(Vec3::new(0.01, 0.0, 0.0));
     }
-    pub fn translate_cube_x_left(&mut self) {
+    pub fn move_left(&mut self) {
         self.transform.translate_model(Vec3::new(-0.01, 0.0, 0.0));
     }
-    pub fn translate_cube_y_down(&mut self) {
-        self.transform.translate_model(Vec3::new(0.0, 0.01, 0.0));
-    }
-    pub fn translate_cube_y_up(&mut self) {
+    pub fn move_down(&mut self) {
         self.transform.translate_model(Vec3::new(0.0, -0.01, 0.0));
     }
-    pub fn translate_cube_z_down(&mut self) {
+    pub fn move_up(&mut self) {
+        self.transform.translate_model(Vec3::new(0.0, 0.01, 0.0));
+    }
+    pub fn move_back(&mut self) {
         self.transform.translate_model(Vec3::new(0.0, 0.0, 0.01));
     }
-    pub fn translate_cube_z_up(&mut self) {
+    pub fn move_forward(&mut self) {
         self.transform.translate_model(Vec3::new(0.0, 0.0, -0.01));
     }
 
-    pub fn scale_cube_up(&mut self) {
+    pub fn scale_up(&mut self) {
         self.transform.scale_model(Vec3::new(0.01, 0.01, 0.01));
     }
-    pub fn scale_cube_down(&mut self) {
+    pub fn scale_down(&mut self) {
         self.transform.scale_model(Vec3::new(-0.01, -0.01, -0.01));
     }
 
-    pub fn camera_position_x_up(&mut self) {
+    pub fn camera_move_right(&mut self) {
         self.transform.camera_position(Vec3::new(0.01, 0.0, 0.0));
     }
-    pub fn camera_position_x_down(&mut self) {
+    pub fn camera_move_left(&mut self) {
         self.transform.camera_position(Vec3::new(-0.01, 0.0, 0.0));
     }
-    pub fn camera_position_y_up(&mut self) {
+    pub fn camera_move_up(&mut self) {
         self.transform.camera_position(Vec3::new(0.0, 0.01, 0.0));
     }
-    pub fn camera_position_y_down(&mut self) {
+    pub fn camera_move_down(&mut self) {
         self.transform.camera_position(Vec3::new(0.0, -0.01, 0.0));
     }
-    pub fn camera_position_z_up(&mut self) {
+    pub fn camera_move_back(&mut self) {
         self.transform.camera_position(Vec3::new(0.0, 0.0, 0.01));
     }
-    pub fn camera_position_z_down(&mut self) {
+    pub fn camera_move_forward(&mut self) {
         self.transform.camera_position(Vec3::new(0.0, 0.0, -0.01));
     }
-    pub fn camera_target_x_up(&mut self) {
+    pub fn camera_look_right(&mut self) {
         self.transform.camera_target(Vec3::new(0.01, 0.0, 0.0));
     }
-    pub fn camera_target_x_down(&mut self) {
+    pub fn camera_look_left(&mut self) {
         self.transform.camera_target(Vec3::new(-0.01, 0.0, 0.0));
     }
-    pub fn camera_target_y_up(&mut self) {
+    pub fn camera_look_up(&mut self) {
         self.transform.camera_target(Vec3::new(0.0, 0.01, 0.0));
     }
-    pub fn camera_target_y_down(&mut self) {
+    pub fn camera_look_down(&mut self) {
         self.transform.camera_target(Vec3::new(0.0, -0.01, 0.0));
     }
-    pub fn camera_target_z_up(&mut self) {
+    pub fn camera_look_back(&mut self) {
         self.transform.camera_target(Vec3::new(0.0, 0.0, 0.01));
     }
-    pub fn camera_target_z_down(&mut self) {
+    pub fn camera_look_forward(&mut self) {
         self.transform.camera_target(Vec3::new(0.0, 0.0, -0.01));
     }
     pub fn camera_up_x_up(&mut self) {
