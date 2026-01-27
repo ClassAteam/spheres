@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "cube",
+    "console",
 ]
 resolver = "2"
