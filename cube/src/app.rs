@@ -1,5 +1,9 @@
 use std::sync::Arc;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo};
+use vulkano::format::Format;
+use vulkano::image::ImageUsage;
+use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
+use vulkano::single_pass_renderpass;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -19,6 +23,7 @@ pub struct App {
     pub config: AppConfig,
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
+    render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
     debug_renderer: Option<DebugRenderer>,
@@ -32,6 +37,7 @@ impl App {
             basic_context: Arc::new(context),
             fps_counter: FpsCounter::new(),
             rdx: None,
+            render_pass: None,
             cube: None,
             debug_renderer: None,
         }
@@ -39,6 +45,110 @@ impl App {
 
     pub fn toggle_debug_ui(&mut self) {
         self.config.debug_ui_enabled = !self.config.debug_ui_enabled;
+    }
+
+    fn create_render_pass(&mut self) {
+        let id = self.rdx.as_ref().unwrap().id;
+        let mut renderer = self.rdx.as_mut().unwrap().window_ctx.get_renderer_mut(id);
+        let pass = single_pass_renderpass!(
+            self.basic_context.bctx.device().clone(),
+            attachments: {
+                color: {
+                    format: renderer.as_mut().unwrap().swapchain_format(),
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: Store,
+                },
+                depth_stencil: {
+                    format: Format::D16_UNORM,
+                    samples: 1,
+                    load_op: Clear,
+                    store_op: DontCare,
+                },
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {depth_stencil},
+            },
+        )
+        .unwrap();
+
+        renderer.as_mut().unwrap().add_additional_image_view(
+            0,
+            Format::D16_UNORM,
+            ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+        );
+
+        self.render_pass = Some(pass);
+    }
+
+    pub fn start_new_path(&mut self) {
+        let acquire_future = self.rdx.as_mut().unwrap().acquire();
+
+        let id = self.rdx.as_ref().unwrap().id;
+        let mut renderer = self.rdx.as_mut().unwrap().window_ctx.get_renderer_mut(id);
+        let descriptor_set_allocator = &self.basic_context.descriptor_set_allocator;
+        let image = renderer.as_ref().unwrap().swapchain_image_view();
+        let depth_view = &renderer.as_mut().unwrap().get_additional_image_view(0);
+
+        let extent = renderer
+            .as_ref()
+            .unwrap()
+            .swapchain_image_size()
+            .map(|v| v as f32);
+        let framebuffer = Framebuffer::new(
+            self.render_pass.as_ref().unwrap().clone(),
+            FramebufferCreateInfo {
+                attachments: vec![image, depth_view.clone()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let render_pass_begin_info = RenderPassBeginInfo {
+            clear_values: vec![
+                Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
+                Some(1.0.into()),                  // Depth attachment
+            ],
+            ..RenderPassBeginInfo::framebuffer(framebuffer)
+        };
+
+        let mut cb = AutoCommandBufferBuilder::primary(
+            self.basic_context.cb_alloc.clone(),
+            renderer.as_ref().unwrap().graphics_queue().queue_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        cb.begin_render_pass(render_pass_begin_info, Default::default())
+            .unwrap();
+
+        self.cube.as_mut().unwrap().draw_within_pass(
+            renderer.as_ref().unwrap().aspect_ratio(),
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
+
+        cb.end_render_pass(Default::default()).unwrap();
+
+        let command_buffer = cb.build().unwrap();
+
+        let queue = &renderer.as_ref().unwrap().graphics_queue();
+        let cube_frame_ready_future = acquire_future.then_execute(queue.clone(), command_buffer);
+
+        let debug_pass_ready_future = self.debug_renderer.as_mut().unwrap().draw_ui(
+            self.rdx.as_ref().unwrap(),
+            &self.fps_counter,
+            self.cube.as_ref().unwrap().get_transform_state(),
+            cube_frame_ready_future.unwrap().boxed(),
+            true,
+        );
+
+        self.rdx
+            .as_mut()
+            .unwrap()
+            .present(Box::new(debug_pass_ready_future));
     }
 }
 
@@ -49,16 +159,13 @@ impl ApplicationHandler for App {
             self.basic_context.bctx.clone(),
         ));
 
+        self.create_render_pass();
+
         let id = self.rdx.as_ref().unwrap().id;
 
         self.cube = Some(CubePass::new(
-            self.rdx
-                .as_mut()
-                .unwrap()
-                .window_ctx
-                .get_renderer_mut(id)
-                .unwrap(),
             self.basic_context.bctx.as_ref(),
+            self.render_pass.as_ref().unwrap().clone(),
         ));
 
         self.debug_renderer = if self.config.debug_ui_enabled {
@@ -84,56 +191,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 self.fps_counter.update();
-
-                let acquired_future = self.rdx.as_mut().unwrap().acquire();
-
-                let mut cb = AutoCommandBufferBuilder::primary(
-                    self.basic_context.cb_alloc.clone(),
-                    self.rdx
-                        .as_ref()
-                        .unwrap()
-                        .window_ctx
-                        .get_primary_renderer()
-                        .as_ref()
-                        .unwrap()
-                        .graphics_queue()
-                        .queue_index(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                self.cube.as_mut().unwrap().update_uniform_and_create_pass(
-                    self.basic_context.descriptor_set_allocator.clone(),
-                    self.rdx.as_mut().unwrap(),
-                    &mut cb,
-                );
-
-                let command_buffer = cb.build().unwrap();
-
-                let queue = self
-                    .rdx
-                    .as_ref()
-                    .unwrap()
-                    .window_ctx
-                    .get_primary_renderer()
-                    .unwrap()
-                    .graphics_queue()
-                    .clone();
-
-                let mut final_future: Box<dyn GpuFuture> =
-                    Box::new(acquired_future.then_execute(queue, command_buffer).unwrap());
-
-                if let Some(debug_renderer) = self.debug_renderer.as_mut() {
-                    final_future = debug_renderer.draw_ui(
-                        self.rdx.as_mut().unwrap(),
-                        &self.fps_counter,
-                        self.cube.as_ref().unwrap().get_transform_state(),
-                        final_future,
-                        self.config.debug_ui_enabled, // Pass the visibility flag
-                    );
-                }
-
-                self.rdx.as_mut().unwrap().present(Box::new(final_future));
+                self.start_new_path();
             }
 
             WindowEvent::KeyboardInput {

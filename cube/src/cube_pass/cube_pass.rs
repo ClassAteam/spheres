@@ -6,7 +6,7 @@ use vulkano::{
         Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
     },
-    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer, RenderPassBeginInfo},
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{
         DescriptorSet, WriteDescriptorSet,
         allocator::StandardDescriptorSetAllocator,
@@ -15,8 +15,6 @@ use vulkano::{
             DescriptorType,
         },
     },
-    format::Format,
-    image::ImageUsage,
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter},
     pipeline::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -33,26 +31,21 @@ use vulkano::{
         },
         layout::PipelineLayoutCreateInfo,
     },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
+    render_pass::{RenderPass, Subpass},
     shader::ShaderStages,
-    single_pass_renderpass,
 };
-use vulkano_util::{context::VulkanoContext, renderer::VulkanoWindowRenderer};
+use vulkano_util::context::VulkanoContext;
 
-use crate::{
-    cube_pass::{
-        models::{INDICES, POSITIONS, Position},
-        shaders::{
-            fs,
-            vs::{self, Data},
-        },
-        transform::TransformState,
+use crate::cube_pass::{
+    models::{INDICES, POSITIONS, Position},
+    shaders::{
+        fs,
+        vs::{self, Data},
     },
-    render::RenderContext,
+    transform::TransformState,
 };
 
 pub struct CubePass {
-    render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Subbuffer<[Position]>,
     index_buffer: Subbuffer<[u16]>,
@@ -61,14 +54,12 @@ pub struct CubePass {
 }
 
 impl CubePass {
-    pub fn new(renderer: &mut VulkanoWindowRenderer, basic_context: &VulkanoContext) -> Self {
-        let render_pass = Self::create_render_pass(renderer, basic_context);
+    pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
         let pipeline = Self::create_graphics_pipeline(basic_context, render_pass.clone());
         let vertex_buffer = Self::create_vertex_buffers(basic_context);
         let index_buffer = Self::create_index_buffer(basic_context);
         let uniform_allocator = Self::create_uniform_buffers(basic_context);
         CubePass {
-            render_pass,
             pipeline,
             vertex_buffer,
             index_buffer,
@@ -173,42 +164,6 @@ impl CubePass {
     }
     pub fn camera_up_z_down(&mut self) {
         self.transform.camera_up(Vec3::new(0.0, 0.0, -0.01));
-    }
-
-    fn create_render_pass(
-        renderer: &mut VulkanoWindowRenderer,
-        basic_context: &VulkanoContext,
-    ) -> Arc<RenderPass> {
-        let pass = single_pass_renderpass!(
-            basic_context.device().clone(),
-            attachments: {
-                color: {
-                    format: renderer.swapchain_format(),
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: Store,
-                },
-                depth_stencil: {
-                    format: Format::D16_UNORM,
-                    samples: 1,
-                    load_op: Clear,
-                    store_op: DontCare,
-                },
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {depth_stencil},
-            },
-        )
-        .unwrap();
-
-        renderer.add_additional_image_view(
-            0,
-            Format::D16_UNORM,
-            ImageUsage::DEPTH_STENCIL_ATTACHMENT,
-        );
-
-        return pass;
     }
 
     fn create_graphics_pipeline(
@@ -348,19 +303,28 @@ impl CubePass {
         )
     }
 
-    pub fn update_uniform_and_create_pass(
+    fn update_uniform(&self, aspect_ratio: f32) -> Subbuffer<Data> {
+        let mvp = self.transform.compute_mvp(aspect_ratio);
+
+        let uniform_data = Data {
+            mvp: mvp.to_cols_array_2d(),
+        };
+
+        // Allocate a fresh subbuffer each frame - no synchronization needed!
+        let subbuffer = self.uniform_allocator.allocate_sized().unwrap();
+        *subbuffer.write().unwrap() = uniform_data;
+
+        subbuffer
+    }
+
+    pub fn draw_within_pass(
         &mut self,
+        aspect_ratio: f32,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
-        window_ctx: &mut RenderContext,
+        extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let uniform_buffer = self.update_uniform(
-            window_ctx
-                .window_ctx
-                .get_renderer(window_ctx.id)
-                .unwrap()
-                .aspect_ratio(),
-        );
+        let uniform_buffer = self.update_uniform(aspect_ratio);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(
             desc_alloc,
@@ -370,46 +334,9 @@ impl CubePass {
         )
         .unwrap();
 
-        let image = window_ctx
-            .window_ctx
-            .get_renderer(window_ctx.id)
-            .unwrap()
-            .swapchain_image_view();
-
-        let depth_view = window_ctx
-            .window_ctx
-            .get_renderer_mut(window_ctx.id)
-            .unwrap()
-            .get_additional_image_view(0);
-
-        let framebuffer = Framebuffer::new(
-            self.render_pass.clone(),
-            FramebufferCreateInfo {
-                attachments: vec![image, depth_view],
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        let render_pass_begin_info = RenderPassBeginInfo {
-            clear_values: vec![
-                Some([0.0, 0.0, 0.0, 1.0].into()), // Color attachment
-                Some(1.0.into()),                  // Depth attachment
-            ],
-            ..RenderPassBeginInfo::framebuffer(framebuffer)
-        };
-
-        cb.begin_render_pass(render_pass_begin_info, Default::default())
-            .unwrap();
-
         let viewport = Viewport {
             offset: [0.0, 0.0],
-            extent: window_ctx
-                .window_ctx
-                .get_renderer(window_ctx.id)
-                .unwrap()
-                .swapchain_image_size()
-                .map(|v| v as f32),
+            extent: extent,
             depth_range: 0.0..=1.0,
         };
         cb.set_viewport(0, [viewport].into_iter().collect())
@@ -431,21 +358,5 @@ impl CubePass {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
-
-        cb.end_render_pass(Default::default()).unwrap();
-    }
-
-    fn update_uniform(&self, aspect_ratio: f32) -> Subbuffer<Data> {
-        let mvp = self.transform.compute_mvp(aspect_ratio);
-
-        let uniform_data = Data {
-            mvp: mvp.to_cols_array_2d(),
-        };
-
-        // Allocate a fresh subbuffer each frame - no synchronization needed!
-        let subbuffer = self.uniform_allocator.allocate_sized().unwrap();
-        *subbuffer.write().unwrap() = uniform_data;
-
-        subbuffer
     }
 }
