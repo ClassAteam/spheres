@@ -14,6 +14,7 @@ use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
 use crate::debug_gui::DebugRenderer;
+use crate::quad_pass::QuadPass;
 use crate::render::RenderContext;
 use crate::vulkan_context::VulkanBasicContext;
 
@@ -26,6 +27,7 @@ pub struct App {
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
+    quad: Option<QuadPass>,
     debug_renderer: Option<DebugRenderer>,
 }
 
@@ -39,6 +41,7 @@ impl App {
             rdx: None,
             render_pass: None,
             cube: None,
+            quad: None,
             debug_renderer: None,
         }
     }
@@ -130,6 +133,13 @@ impl App {
             &mut cb,
         );
 
+        self.quad.as_mut().unwrap().draw_within_pass(
+            renderer.as_ref().unwrap().aspect_ratio(),
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
+
         cb.end_render_pass(Default::default()).unwrap();
 
         let command_buffer = cb.build().unwrap();
@@ -166,6 +176,12 @@ impl ApplicationHandler for App {
         self.cube = Some(CubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
+        ));
+
+        self.quad = Some(QuadPass::new(
+            self.basic_context.bctx.as_ref(),
+            self.render_pass.as_ref().unwrap().clone(),
+            "resources/glyph_atlas.ppm",
         ));
 
         self.debug_renderer = if self.config.debug_ui_enabled {
