@@ -44,6 +44,8 @@ use crate::quad_pass::{
         vs::{self, Data},
     },
 };
+use std::path::Path;
+
 use crate::texture::{create_sampler, create_texture_image, load_ppm};
 
 pub struct QuadPass {
@@ -59,7 +61,7 @@ impl QuadPass {
     pub fn new(
         basic_context: &VulkanoContext,
         render_pass: Arc<RenderPass>,
-        atlas_path: &str,
+        atlas_path: impl AsRef<Path>,
     ) -> Self {
         // Load atlas texture
         let (pixel_data, width, height) = load_ppm(atlas_path).expect("Failed to load atlas PPM");
@@ -229,22 +231,16 @@ impl QuadPass {
         )
     }
 
-    fn create_orthographic_matrix(_aspect_ratio: f32) -> Mat4 {
-        // Position the quad in the lower-right corner
-        // Screen space: X [0.5, 1.0], Y [-1.0, -0.6]
-        // Width: 50% of screen, Height: maintains 8:1 aspect ratio (512x64)
+    fn create_orthographic_matrix(aspect_ratio: f32) -> Mat4 {
+        let quad_width = 0.5;
+        let atlas_aspect = 512.0 / 64.0;
+        let quad_height = quad_width * aspect_ratio / atlas_aspect;
 
-        let quad_width = 0.5; // 50% of screen width
-        let atlas_aspect = 512.0 / 64.0; // 8:1
-        let quad_height = quad_width / atlas_aspect; // Maintain aspect ratio
-
-        // Position in lower-right corner
         let left = 0.5;
-        let right = 1.0;
+        let right = left + quad_width;
         let bottom = -1.0;
-        let top = bottom + quad_height * 2.0; // Convert to screen coordinates
+        let top = bottom + quad_height;
 
-        // Create orthographic projection matrix that maps [-1,1] quad to screen position
         let scale_x = (right - left) / 2.0;
         let scale_y = (top - bottom) / 2.0;
         let translate_x = (right + left) / 2.0;

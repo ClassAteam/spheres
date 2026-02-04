@@ -14,22 +14,22 @@ pub struct QuadVertex {
 pub const QUAD_VERTICES: [QuadVertex; 4] = [
     // Bottom-left
     QuadVertex {
-        position: [-1.0, -1.0, 0.0],
+        position: [-1.0, 1.0, 0.0],
         uv: [0.0, 1.0], // Bottom-left in texture space
     },
     // Bottom-right
     QuadVertex {
-        position: [1.0, -1.0, 0.0],
+        position: [1.0, 1.0, 0.0],
         uv: [1.0, 1.0], // Bottom-right in texture space
     },
     // Top-right
     QuadVertex {
-        position: [1.0, 1.0, 0.0],
+        position: [1.0, -1.0, 0.0],
         uv: [1.0, 0.0], // Top-right in texture space
     },
     // Top-left
     QuadVertex {
-        position: [-1.0, 1.0, 0.0],
+        position: [-1.0, -1.0, 0.0],
         uv: [0.0, 0.0], // Top-left in texture space
     },
 ];

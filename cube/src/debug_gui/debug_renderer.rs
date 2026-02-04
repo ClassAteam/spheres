@@ -24,6 +24,7 @@ impl DebugRenderer {
             renderer.swapchain_format(),
             egui_winit_vulkano::GuiConfig {
                 is_overlay: true,
+                allow_srgb_render_target: true,
                 ..Default::default()
             },
         );

@@ -181,7 +181,7 @@ impl ApplicationHandler for App {
         self.quad = Some(QuadPass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
-            "resources/glyph_atlas.ppm",
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/glyph_atlas.ppm"),
         ));
 
         self.debug_renderer = if self.config.debug_ui_enabled {
