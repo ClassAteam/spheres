@@ -182,6 +182,7 @@ impl ApplicationHandler for App {
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/glyph_atlas.ppm"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/FreeMono.ttf"),
         ));
 
         self.debug_renderer = if self.config.debug_ui_enabled {

@@ -8,8 +8,9 @@ use vulkano::{
     device::DeviceOwned,
     format::Format,
     image::{
-        sampler::{Sampler, SamplerAddressMode, SamplerCreateInfo, Filter},
-        Image, ImageCreateInfo, ImageType, ImageUsage, view::ImageView,
+        Image, ImageCreateInfo, ImageType, ImageUsage,
+        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+        view::ImageView,
     },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     sync::GpuFuture,
@@ -17,7 +18,7 @@ use vulkano::{
 use vulkano_util::context::VulkanoContext;
 
 /// Create a texture image from raw pixel data
-pub fn create_texture_image(
+pub fn create_atlas_texture(
     context: &VulkanoContext,
     data: &[u8],
     width: u32,
@@ -28,7 +29,10 @@ pub fn create_texture_image(
     let memory_allocator = context.memory_allocator();
 
     // Create command buffer allocator for this operation
-    let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(device.clone(), Default::default()));
+    let cb_allocator = Arc::new(StandardCommandBufferAllocator::new(
+        device.clone(),
+        Default::default(),
+    ));
 
     // Create staging buffer
     let staging_buffer = Buffer::from_iter(
@@ -89,8 +93,8 @@ pub fn create_texture_image(
         .map_err(|e| format!("Failed to wait for transfer: {}", e))?;
 
     // Create image view
-    let image_view = ImageView::new_default(image)
-        .map_err(|e| format!("Failed to create image view: {}", e))?;
+    let image_view =
+        ImageView::new_default(image).map_err(|e| format!("Failed to create image view: {}", e))?;
 
     Ok(image_view)
 }
