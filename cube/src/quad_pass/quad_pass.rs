@@ -64,6 +64,7 @@ impl QuadPass {
         font_path: impl AsRef<Path>,
     ) -> Self {
         let (pixel_data, width, height) = load_ppm(atlas_path).expect("Failed to load atlas PPM");
+        //TODO maybe should be delegated to atlas module.
         let texture_image = create_atlas_texture(basic_context, &pixel_data, width, height)
             .expect("Failed to create texture image");
         let sampler =
