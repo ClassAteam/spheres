@@ -17,7 +17,7 @@ impl GlyphData {
 }
 
 pub struct Glyphs {
-    data: Vec<GlyphData>,
+    pub data: Vec<GlyphData>,
 }
 
 impl Glyphs {
@@ -49,5 +49,12 @@ impl Glyphs {
 
     pub fn get_glyphs(&self) -> &[GlyphData] {
         &self.data
+    }
+
+    pub fn total_area(&self) -> u32 {
+        self.data
+            .iter()
+            .map(|g| g.image().width() * g.image().height())
+            .sum()
     }
 }

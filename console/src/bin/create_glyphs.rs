@@ -5,7 +5,7 @@ fn main() {
     let creator = AtlasCreator::new();
 
     // Save individual glyphs for inspection
-    fs::create_dir_all("output/glyphs").unwrap();
+    fs::create_dir_all("console/output/glyphs").unwrap();
 
     for glyph in creator.glyphs() {
         let ch = glyph.character();
