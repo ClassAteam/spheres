@@ -133,12 +133,12 @@ impl App {
             &mut cb,
         );
 
-        self.quad.as_mut().unwrap().draw_within_pass(
-            renderer.as_ref().unwrap().aspect_ratio(),
-            descriptor_set_allocator.clone(),
-            extent,
-            &mut cb,
-        );
+        // self.quad.as_mut().unwrap().draw_within_pass(
+        //     renderer.as_ref().unwrap().aspect_ratio(),
+        //     descriptor_set_allocator.clone(),
+        //     extent,
+        //     &mut cb,
+        // );
 
         cb.end_render_pass(Default::default()).unwrap();
 
@@ -182,7 +182,6 @@ impl ApplicationHandler for App {
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/glyph_atlas.ppm"),
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/FreeMono.ttf"),
         ));
 
         self.debug_renderer = if self.config.debug_ui_enabled {

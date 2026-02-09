@@ -1,4 +1,3 @@
-pub mod glyph_atlas;
 mod models;
 mod quad_pass;
 mod shaders;

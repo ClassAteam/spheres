@@ -1,3 +1,4 @@
+use console::atlas_creator::{self, AtlasCreator};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -40,7 +41,6 @@ use vulkano::{
 use vulkano_util::context::VulkanoContext;
 
 use crate::quad_pass::{
-    glyph_atlas::AtlasMetaData,
     models::QuadVertex,
     shaders::{fs, vs},
 };
@@ -52,7 +52,6 @@ pub struct QuadPass {
     sampler: Arc<Sampler>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     uniform_allocator: SubbufferAllocator,
-    glyph_atlas: AtlasMetaData,
     text: String,
 }
 
@@ -60,17 +59,19 @@ impl QuadPass {
     pub fn new(
         basic_context: &VulkanoContext,
         render_pass: Arc<RenderPass>,
-        atlas_path: impl AsRef<Path>,
         font_path: impl AsRef<Path>,
     ) -> Self {
-        let (pixel_data, width, height) = load_ppm(atlas_path).expect("Failed to load atlas PPM");
-        //TODO maybe should be delegated to atlas module.
-        let texture_image = create_atlas_texture(basic_context, &pixel_data, width, height)
-            .expect("Failed to create texture image");
+        let atlas_creator = AtlasCreator::new();
+        let atlas = atlas_creator.create_atlas();
+        let pixel_data = atlas.pixel_data();
+        let atlas_width = atlas.width();
+        let atlas_height = atlas.height();
+
+        let texture_image =
+            create_atlas_texture(basic_context, pixel_data, atlas_width, atlas_height)
+                .expect("Failed to create texture image");
         let sampler =
             create_sampler(basic_context.memory_allocator()).expect("Failed to create sampler");
-
-        let glyph_atlas = AtlasMetaData::new(font_path, 48.0, 512);
 
         let pipeline = Self::create_graphics_pipeline(basic_context, render_pass);
         let uniform_allocator = Self::create_uniform_allocator(basic_context);
@@ -81,7 +82,6 @@ impl QuadPass {
             sampler,
             memory_allocator: basic_context.memory_allocator().clone(),
             uniform_allocator,
-            glyph_atlas,
             text: String::from("HELLO WORLD"),
         }
     }
@@ -89,53 +89,6 @@ impl QuadPass {
     #[allow(dead_code)]
     pub fn set_text(&mut self, text: &str) {
         self.text = text.to_string();
-    }
-
-    /// Walk the text string and emit one quad (4 vertices + 6 indices) per
-    /// glyph found in the atlas.  Positions are in pixel coordinates; the
-    /// vertex shader converts them to NDC using the screen size uniform.
-    fn layout_text(&self) -> (Vec<QuadVertex>, Vec<u16>) {
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
-        let mut pen_x: f32 = 20.0;
-        let baseline_y: f32 = 60.0; // pixels from the top of the window
-
-        for ch in self.text.chars() {
-            if let Some(g) = self.glyph_atlas.glyphs.get(&ch) {
-                let x0 = pen_x + g.bearing_x;
-                let x1 = x0 + g.width;
-                // bearing_y is negative for glyphs that sit above the baseline
-                let y0 = baseline_y + g.bearing_y; // top edge of the glyph quad
-                let y1 = y0 + g.height; // bottom edge
-
-                let base = vertices.len() as u16;
-
-                // TL – TR – BR – BL  (positions in pixel space, UVs into the atlas)
-                vertices.push(QuadVertex {
-                    position: [x0, y0, 0.0],
-                    uv: [g.uv_min[0], g.uv_min[1]],
-                });
-                vertices.push(QuadVertex {
-                    position: [x1, y0, 0.0],
-                    uv: [g.uv_max[0], g.uv_min[1]],
-                });
-                vertices.push(QuadVertex {
-                    position: [x1, y1, 0.0],
-                    uv: [g.uv_max[0], g.uv_max[1]],
-                });
-                vertices.push(QuadVertex {
-                    position: [x0, y1, 0.0],
-                    uv: [g.uv_min[0], g.uv_max[1]],
-                });
-
-                // Two triangles, same winding as the original single quad
-                indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
-            }
-            // Always advance the pen — unknown chars (e.g. space) become blank gaps
-            pen_x += self.glyph_atlas.advance;
-        }
-
-        (vertices, indices)
     }
 
     fn create_graphics_pipeline(
@@ -266,90 +219,85 @@ impl QuadPass {
         subbuffer
     }
 
-    pub fn draw_within_pass(
-        &mut self,
-        _aspect_ratio: f32,
-        desc_alloc: Arc<StandardDescriptorSetAllocator>,
-        extent: [f32; 2],
-        cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-    ) {
-        let (verts, idxs) = self.layout_text();
-        if verts.is_empty() {
-            return;
-        }
+    // pub fn draw_within_pass(
+    //     &mut self,
+    //     _aspect_ratio: f32,
+    //     desc_alloc: Arc<StandardDescriptorSetAllocator>,
+    //     extent: [f32; 2],
+    //     cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    // ) {
+    //     // Build per-frame vertex and index buffers from the laid-out glyphs
+    //     let vertex_buffer = Buffer::from_iter(
+    //         self.memory_allocator.clone(),
+    //         BufferCreateInfo {
+    //             usage: BufferUsage::VERTEX_BUFFER,
+    //             ..Default::default()
+    //         },
+    //         AllocationCreateInfo {
+    //             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+    //                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+    //             ..Default::default()
+    //         },
+    //         verts,
+    //     )
+    //     .unwrap();
 
-        // Build per-frame vertex and index buffers from the laid-out glyphs
-        let vertex_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            verts,
-        )
-        .unwrap();
+    //     let index_buffer = Buffer::from_iter(
+    //         self.memory_allocator.clone(),
+    //         BufferCreateInfo {
+    //             usage: BufferUsage::INDEX_BUFFER,
+    //             ..Default::default()
+    //         },
+    //         AllocationCreateInfo {
+    //             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+    //                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+    //             ..Default::default()
+    //         },
+    //         idxs,
+    //     )
+    //     .unwrap();
 
-        let index_buffer = Buffer::from_iter(
-            self.memory_allocator.clone(),
-            BufferCreateInfo {
-                usage: BufferUsage::INDEX_BUFFER,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-                ..Default::default()
-            },
-            idxs,
-        )
-        .unwrap();
+    //     let index_count = index_buffer.len() as u32;
 
-        let index_count = index_buffer.len() as u32;
+    //     let uniform_buffer = self.update_uniform(extent);
+    //     let layout = self.pipeline.layout().set_layouts()[0].clone();
 
-        let uniform_buffer = self.update_uniform(extent);
-        let layout = self.pipeline.layout().set_layouts()[0].clone();
+    //     let descriptor_set = DescriptorSet::new(
+    //         desc_alloc,
+    //         layout,
+    //         [
+    //             WriteDescriptorSet::buffer(0, uniform_buffer),
+    //             WriteDescriptorSet::image_view_sampler(
+    //                 1,
+    //                 self.texture_image.clone(),
+    //                 self.sampler.clone(),
+    //             ),
+    //         ],
+    //         [],
+    //     )
+    //     .unwrap();
 
-        let descriptor_set = DescriptorSet::new(
-            desc_alloc,
-            layout,
-            [
-                WriteDescriptorSet::buffer(0, uniform_buffer),
-                WriteDescriptorSet::image_view_sampler(
-                    1,
-                    self.texture_image.clone(),
-                    self.sampler.clone(),
-                ),
-            ],
-            [],
-        )
-        .unwrap();
+    //     let viewport = Viewport {
+    //         offset: [0.0, 0.0],
+    //         extent,
+    //         depth_range: 0.0..=1.0,
+    //     };
+    //     cb.set_viewport(0, [viewport].into_iter().collect())
+    //         .unwrap();
 
-        let viewport = Viewport {
-            offset: [0.0, 0.0],
-            extent,
-            depth_range: 0.0..=1.0,
-        };
-        cb.set_viewport(0, [viewport].into_iter().collect())
-            .unwrap();
+    //     cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
 
-        cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
+    //     cb.bind_descriptor_sets(
+    //         PipelineBindPoint::Graphics,
+    //         self.pipeline.layout().clone(),
+    //         0,
+    //         descriptor_set,
+    //     )
+    //     .unwrap();
 
-        cb.bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            self.pipeline.layout().clone(),
-            0,
-            descriptor_set,
-        )
-        .unwrap();
+    //     cb.bind_vertex_buffers(0, vertex_buffer).unwrap();
+    //     cb.bind_index_buffer(index_buffer).unwrap();
 
-        cb.bind_vertex_buffers(0, vertex_buffer).unwrap();
-        cb.bind_index_buffer(index_buffer).unwrap();
-
-        unsafe { cb.draw_indexed(index_count, 1, 0, 0, 0) }.unwrap();
-    }
+    //     unsafe { cb.draw_indexed(index_count, 1, 0, 0, 0) }.unwrap();
+    // }
 }

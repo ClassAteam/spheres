@@ -541,6 +541,7 @@ name = "cube"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "console",
  "egui_winit_vulkano",
  "glam",
  "vulkano",

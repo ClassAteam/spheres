@@ -19,7 +19,7 @@ impl AtlasCreator {
         AtlasCreator { glyphs, packer }
     }
 
-    pub fn create_atlas(mut self) -> Atlas {
+    pub fn create_atlas(self) -> Atlas {
         let glyphs = &self.glyphs.data;
         let image = self.packer.pack_to_atlas(glyphs);
         Atlas { image }
@@ -37,5 +37,17 @@ pub struct Atlas {
 impl Atlas {
     pub fn write_to_file(&self) {
         self.image.save("output.png").unwrap();
+    }
+
+    pub fn pixel_data(&self) -> &[u8] {
+        self.image.as_raw()
+    }
+
+    pub fn width(&self) -> u32 {
+        self.image.width()
+    }
+
+    pub fn height(&self) -> u32 {
+        self.image.height()
     }
 }

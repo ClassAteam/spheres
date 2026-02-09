@@ -17,35 +17,29 @@ impl Packer {
     pub fn new(area: u32) -> Self {
         let dimensions = AtlasDimensions::new(area);
         let image = GrayImage::new(dimensions.x, dimensions.y);
-        Self {
-            image,
-            cursor: Cursor {
-                atlas_width: (dimensions.x),
-                atlas_height: (dimensions.y),
-                x_pos: (0),
-                y_pos: (0),
-                padding: (1),
-                row_height: (0),
-            },
-        }
+        let cursor = Cursor::new(&dimensions);
+        Self { image, cursor }
     }
 
-    fn write_glyph(&mut self, glyph: &GlyphData, start: GlyphStart) -> LastGlyphEnd {
+    fn write_glyph(&mut self, glyph: &GlyphData, start: &GlyphStart) -> GlyphEnd {
         for (x, y, pixel) in glyph.image().enumerate_pixels() {
             self.image
-                .put_pixel(start.x_pos + x, start.y_pos + y, *pixel);
+                .put_pixel(start.x_pos + x, start.top_row_y + y, *pixel);
         }
-        LastGlyphEnd {
-            width: glyph.image().width(),
+        GlyphEnd {
+            x_pos: start.x_pos + glyph.image().width(),
+            y_pos: start.top_row_y + glyph.image().height(),
             height: glyph.image().height(),
         }
     }
 
     pub fn pack_to_atlas(mut self, glyphs: &[GlyphData]) -> GrayImage {
         for glyph in glyphs {
-            let start = self.cursor.next_glyph_start(glyph.image().width());
-            let end = self.write_glyph(&glyph, start);
-            self.cursor.advance(end);
+            let start = self
+                .cursor
+                .next_glyph_start(glyph.image().width(), glyph.image().height());
+            let end = self.write_glyph(&glyph, &start);
+            self.cursor.advance(start, end);
         }
 
         self.image
@@ -75,60 +69,80 @@ impl AtlasDimensions {
 struct Cursor {
     atlas_width: u32,
     atlas_height: u32,
+    last_written: LastWrittenEnd,
+    padding: u32,
+    current_top_row_y: u32,
+    current_row_height: u32,
+}
+
+#[derive(Debug)]
+struct LastWrittenEnd {
     x_pos: u32,
     y_pos: u32,
-    padding: u32,
-    row_height: u32,
 }
 
 #[derive(Debug)]
 struct GlyphStart {
     x_pos: u32,
-    y_pos: u32,
+    top_row_y: u32,
 }
 
-struct LastGlyphEnd {
-    width: u32,
+#[derive(Debug)]
+struct GlyphEnd {
+    x_pos: u32,
+    y_pos: u32,
     height: u32,
 }
 
 impl Cursor {
-    pub fn next_glyph_start(&mut self, glyph_width: u32) -> GlyphStart {
+    pub fn new(dimensions: &AtlasDimensions) -> Self {
+        Cursor {
+            atlas_width: (dimensions.x),
+            atlas_height: (dimensions.y),
+            last_written: LastWrittenEnd {
+                x_pos: (0),
+                y_pos: (0),
+            },
+            padding: (10),
+            current_top_row_y: (0),
+            current_row_height: (0),
+        }
+    }
+
+    pub fn next_glyph_start(&self, glyph_width: u32, glyph_height: u32) -> GlyphStart {
         if self.is_out_of_width(glyph_width) {
-            self.move_to_next_row()
+            self.move_to_next_row(glyph_height)
         } else {
             self.add_x_padding()
         }
     }
 
-    pub fn advance(&mut self, last_dim: LastGlyphEnd) {
-        self.x_pos += last_dim.width;
-        self.row_height = self.row_height.max(last_dim.height);
+    pub fn advance(&mut self, start_pos: GlyphStart, ending_pos: GlyphEnd) {
+        self.last_written.x_pos = ending_pos.x_pos;
+        self.last_written.y_pos = ending_pos.y_pos;
+        self.current_row_height = self.current_row_height.max(ending_pos.height);
+        self.current_top_row_y = self.current_top_row_y.max(start_pos.top_row_y);
     }
 
-    fn add_x_padding(&mut self) -> GlyphStart {
-        self.x_pos += self.padding;
+    fn add_x_padding(&self) -> GlyphStart {
         GlyphStart {
-            x_pos: self.x_pos,
-            y_pos: self.y_pos,
+            x_pos: (self.last_written.x_pos + self.padding),
+            top_row_y: (self.current_top_row_y),
         }
     }
 
     fn is_out_of_width(&self, glyph_width: u32) -> bool {
-        if self.x_pos + glyph_width > self.atlas_width {
+        if self.last_written.x_pos + glyph_width > self.atlas_width {
             true
         } else {
             false
         }
     }
 
-    fn move_to_next_row(&mut self) -> GlyphStart {
-        self.y_pos += self.row_height + self.padding;
-        self.x_pos = 0;
-        self.row_height = 0;
+    fn move_to_next_row(&self, glyph_height: u32) -> GlyphStart {
         GlyphStart {
-            x_pos: self.x_pos,
-            y_pos: self.y_pos,
+            x_pos: (0 + self.padding),
+            top_row_y: (self.current_top_row_y + glyph_height + self.padding),
         }
     }
 }
