@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::atlas_creator::glyph::{GlyphData, Glyphs};
-use crate::atlas_creator::packer::Packer;
+use crate::atlas_creator::packer::{GlyphMetrics, Packer};
 use ab_glyph::{FontArc, PxScale};
 use image::GrayImage;
 
@@ -21,8 +23,7 @@ impl AtlasCreator {
 
     pub fn create_atlas(self) -> Atlas {
         let glyphs = &self.glyphs.data;
-        let image = self.packer.pack_to_atlas(glyphs);
-        Atlas { image }
+        self.packer.pack_to_atlas(glyphs)
     }
 
     pub fn glyphs(&self) -> &[GlyphData] {
@@ -31,7 +32,8 @@ impl AtlasCreator {
 }
 
 pub struct Atlas {
-    image: GrayImage,
+    pub image: GrayImage,
+    pub info: HashMap<char, GlyphMetrics>,
 }
 
 impl Atlas {

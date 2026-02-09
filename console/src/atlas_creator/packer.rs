@@ -1,10 +1,17 @@
+use std::collections::HashMap;
+
 use image::GrayImage;
 
-use crate::atlas_creator::glyph::GlyphData;
+use crate::atlas_creator::{atlas_creator::Atlas, glyph::GlyphData};
 
 pub struct Packer {
     image: GrayImage,
     cursor: Cursor,
+}
+
+pub struct GlyphMetrics {
+    uv_min: UvMinData,
+    uv_max: UvMaxData,
 }
 
 #[derive(Debug)]
@@ -33,16 +40,60 @@ impl Packer {
         }
     }
 
-    pub fn pack_to_atlas(mut self, glyphs: &[GlyphData]) -> GrayImage {
+    pub fn pack_to_atlas(mut self, glyphs: &[GlyphData]) -> Atlas {
+        let mut meta_data = HashMap::new();
         for glyph in glyphs {
             let start = self
                 .cursor
                 .next_glyph_start(glyph.image().width(), glyph.image().height());
+
+            let uv_min = UvMinData::new(&start, self.image.width(), self.image.height());
+
             let end = self.write_glyph(&glyph, &start);
+
+            let uv_max = UvMaxData::new(&end, self.image.width(), self.image.height());
+
             self.cursor.advance(start, end);
+
+            let metrics = GlyphMetrics { uv_min, uv_max };
+
+            meta_data.insert(glyph.character(), metrics);
         }
 
-        self.image
+        let image = self.image;
+
+        Atlas {
+            image: image,
+            info: meta_data,
+        }
+    }
+}
+
+struct UvMinData {
+    min_x: f32,
+    min_y: f32,
+}
+
+struct UvMaxData {
+    max_x: f32,
+    max_y: f32,
+}
+
+impl UvMinData {
+    fn new(first_corner: &GlyphStart, atlas_width: u32, atlas_height: u32) -> Self {
+        Self {
+            min_x: first_corner.x_pos as f32 / atlas_width as f32,
+            min_y: first_corner.top_row_y as f32 / atlas_height as f32,
+        }
+    }
+}
+
+impl UvMaxData {
+    fn new(second_corner: &GlyphEnd, atlas_width: u32, atlas_height: u32) -> Self {
+        Self {
+            max_x: second_corner.x_pos as f32 / atlas_width as f32,
+            max_y: second_corner.y_pos as f32 / atlas_height as f32,
+        }
     }
 }
 
@@ -97,15 +148,12 @@ struct GlyphEnd {
 impl Cursor {
     pub fn new(dimensions: &AtlasDimensions) -> Self {
         Cursor {
-            atlas_width: (dimensions.x),
-            atlas_height: (dimensions.y),
-            last_written: LastWrittenEnd {
-                x_pos: (0),
-                y_pos: (0),
-            },
-            padding: (10),
-            current_top_row_y: (0),
-            current_row_height: (0),
+            atlas_width: dimensions.x,
+            atlas_height: dimensions.y,
+            last_written: LastWrittenEnd { x_pos: 0, y_pos: 0 },
+            padding: 10,
+            current_top_row_y: 0,
+            current_row_height: 0,
         }
     }
 
@@ -126,23 +174,19 @@ impl Cursor {
 
     fn add_x_padding(&self) -> GlyphStart {
         GlyphStart {
-            x_pos: (self.last_written.x_pos + self.padding),
-            top_row_y: (self.current_top_row_y),
+            x_pos: self.last_written.x_pos + self.padding,
+            top_row_y: self.current_top_row_y,
         }
     }
 
     fn is_out_of_width(&self, glyph_width: u32) -> bool {
-        if self.last_written.x_pos + glyph_width > self.atlas_width {
-            true
-        } else {
-            false
-        }
+        self.last_written.x_pos + glyph_width > self.atlas_width
     }
 
     fn move_to_next_row(&self, glyph_height: u32) -> GlyphStart {
         GlyphStart {
-            x_pos: (0 + self.padding),
-            top_row_y: (self.current_top_row_y + glyph_height + self.padding),
+            x_pos: self.padding,
+            top_row_y: self.current_top_row_y + glyph_height + self.padding,
         }
     }
 }
