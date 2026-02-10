@@ -103,12 +103,10 @@ impl UvMaxData {
 
 impl AtlasDimensions {
     pub fn new(total_area: u32) -> Self {
-        let with_overhead = (total_area as f32 * 1.5).ceil() as u32;
+        let with_overhead = (total_area as f32 * 6.0).ceil() as u32;
 
-        // Start with a reasonable width
-        let width = 1024u32
-            .max((with_overhead as f32).sqrt().ceil() as u32)
-            .next_power_of_two();
+        // Calculate width based on area
+        let width = ((with_overhead as f32).sqrt().ceil() as u32).next_power_of_two();
 
         // Calculate minimum height needed
         let height = ((with_overhead as f32 / width as f32).ceil() as u32).next_power_of_two();
@@ -182,13 +180,13 @@ impl Cursor {
     }
 
     fn is_out_of_width(&self, glyph_width: u32) -> bool {
-        self.last_written.x_pos + glyph_width > self.atlas_width
+        self.last_written.x_pos + self.padding + glyph_width > self.atlas_width
     }
 
-    fn move_to_next_row(&self, glyph_height: u32) -> GlyphStart {
+    fn move_to_next_row(&self, _glyph_height: u32) -> GlyphStart {
         GlyphStart {
             x_pos: self.padding,
-            top_row_y: self.current_top_row_y + glyph_height + self.padding,
+            top_row_y: self.current_top_row_y + self.current_row_height + self.padding,
         }
     }
 }

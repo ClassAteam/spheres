@@ -82,12 +82,11 @@ impl QuadPass {
         }
     }
 
-    fn create_text_geometry(&self) -> TextGeometry {
+    fn create_text_geometry(&self, text: String) -> TextGeometry {
         let start = StartPixelPoint {
-            x: 3000.0,
+            x: 2500.0,
             y: 1000.0,
         };
-        let text = "Darova Pidr Suka".to_string();
         let info = &self.atlas.info;
         let mut creator = TextGeometryCreator::new(start);
         creator.build(text, info)
@@ -225,9 +224,10 @@ impl QuadPass {
         &mut self,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         extent: [f32; 2],
+        fps: f32,
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let text_geometry = self.create_text_geometry();
+        let text_geometry = self.create_text_geometry(format!("FPS:{:.1}", fps));
         let vertex_buffer = Buffer::from_iter(
             self.memory_allocator.clone(),
             BufferCreateInfo {

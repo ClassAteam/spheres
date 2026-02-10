@@ -136,6 +136,7 @@ impl App {
         self.quad.as_mut().unwrap().draw_within_pass(
             descriptor_set_allocator.clone(),
             extent,
+            self.fps_counter.fps(),
             &mut cb,
         );
 

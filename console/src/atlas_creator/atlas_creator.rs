@@ -15,9 +15,10 @@ impl AtlasCreator {
         let font_data = include_bytes!("./../../resources/FreeMono.ttf");
         let font = FontArc::try_from_slice(font_data).unwrap();
 
-        let scale = PxScale::from(48.0);
+        let scale = PxScale::from(30.0);
         let glyphs = Glyphs::new(font, scale);
-        let packer = Packer::new(glyphs.total_area());
+        let total_area = glyphs.total_area();
+        let packer = Packer::new(total_area);
         AtlasCreator { glyphs, packer }
     }
 
