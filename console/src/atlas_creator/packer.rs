@@ -123,7 +123,6 @@ impl AtlasDimensions {
 #[derive(Debug)]
 struct Cursor {
     atlas_width: u32,
-    atlas_height: u32,
     last_written: LastWrittenEnd,
     padding: u32,
     current_top_row_y: u32,
@@ -153,7 +152,6 @@ impl Cursor {
     pub fn new(dimensions: &AtlasDimensions) -> Self {
         Cursor {
             atlas_width: dimensions.x,
-            atlas_height: dimensions.y,
             last_written: LastWrittenEnd { x_pos: 0, y_pos: 0 },
             padding: 10,
             current_top_row_y: 0,

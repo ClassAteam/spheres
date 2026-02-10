@@ -1,7 +1,6 @@
 use console::atlas_creator::{Atlas, AtlasCreator, GlyphMetrics};
-use std::path::Path;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::{collections::HashMap, str::FromStr};
 
 use vulkano::{
     buffer::{
@@ -45,7 +44,7 @@ use crate::quad_pass::{
     models::QuadVertex,
     shaders::{fs, vs},
 };
-use crate::texture::{create_atlas_texture, create_sampler, load_ppm};
+use crate::texture::{create_atlas_texture, create_sampler};
 
 pub struct QuadPass {
     pipeline: Arc<GraphicsPipeline>,
@@ -54,15 +53,10 @@ pub struct QuadPass {
     memory_allocator: Arc<StandardMemoryAllocator>,
     uniform_allocator: SubbufferAllocator,
     atlas: Atlas,
-    text: String,
 }
 
 impl QuadPass {
-    pub fn new(
-        basic_context: &VulkanoContext,
-        render_pass: Arc<RenderPass>,
-        font_path: impl AsRef<Path>,
-    ) -> Self {
+    pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
         let atlas_creator = AtlasCreator::new();
         let atlas = atlas_creator.create_atlas();
         let pixel_data = atlas.pixel_data();
@@ -85,18 +79,15 @@ impl QuadPass {
             memory_allocator: basic_context.memory_allocator().clone(),
             uniform_allocator,
             atlas: atlas,
-            text: String::from("HELLO WORLD"),
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_text(&mut self, text: &str) {
-        self.text = text.to_string();
-    }
-
     fn create_text_geometry(&self) -> TextGeometry {
-        let start = StartPixelPoint { x: 20.0, y: 40.0 };
-        let text = "poshel_nahuy".to_string();
+        let start = StartPixelPoint {
+            x: 3000.0,
+            y: 1000.0,
+        };
+        let text = "Darova Pidr Suka".to_string();
         let info = &self.atlas.info;
         let mut creator = TextGeometryCreator::new(start);
         creator.build(text, info)
@@ -357,7 +348,7 @@ impl TextGeometryCreator {
         let left = self.point.x;
         let top = self.point.y;
         let right = self.point.x + glyph_width;
-        let bottom = self.point.y + glyph_height;
+        let bottom = self.point.y - glyph_height;
         self.point.iterate(glyph_width);
         PixelRectangle {
             left,

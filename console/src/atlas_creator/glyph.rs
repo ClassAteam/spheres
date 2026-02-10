@@ -1,4 +1,4 @@
-use ab_glyph::{Font, FontArc, PxScale};
+use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use image::{GrayImage, Luma};
 
 pub struct GlyphData {
@@ -39,6 +39,19 @@ impl Glyphs {
                     let pixel_value = (coverage * 255.0) as u8;
                     image.put_pixel(x, y, Luma([pixel_value]));
                 });
+
+                glyph_data.push(GlyphData { ch, image });
+            } else {
+                // Handle non-visual glyphs (like space character)
+                // Get the advance width for proper spacing
+                let h_advance = font.as_scaled(scale).h_advance(glyph_id);
+                let advance_width = h_advance.ceil() as u32;
+
+                // Create a 1-pixel tall empty image with the correct advance width
+                // This ensures proper spacing without visual content
+                let width = advance_width.max(1);
+                let height = 1;
+                let image = GrayImage::new(width, height);
 
                 glyph_data.push(GlyphData { ch, image });
             }
