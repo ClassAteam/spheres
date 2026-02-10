@@ -1,6 +1,8 @@
 use console::atlas_creator::{Atlas, AtlasCreator, GlyphMetrics};
 use std::collections::HashMap;
 use std::sync::Arc;
+use vulkano::image::sampler::Filter;
+use vulkano::image::sampler::SamplerAddressMode;
 
 use vulkano::{
     buffer::{
@@ -16,7 +18,11 @@ use vulkano::{
             DescriptorType,
         },
     },
-    image::{sampler::Sampler, view::ImageView},
+    device::DeviceOwned,
+    image::{
+        sampler::{Sampler, SamplerCreateInfo},
+        view::ImageView,
+    },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
         DynamicState, GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
@@ -40,13 +46,12 @@ use vulkano::{
 };
 use vulkano_util::context::VulkanoContext;
 
-use crate::quad_pass::{
+use crate::text_renderer::{
     models::QuadVertex,
     shaders::{fs, vs},
 };
-use crate::texture::{create_atlas_texture, create_sampler};
 
-pub struct QuadPass {
+pub struct TextRenderer {
     pipeline: Arc<GraphicsPipeline>,
     texture_image: Arc<ImageView>,
     sampler: Arc<Sampler>,
@@ -55,24 +60,21 @@ pub struct QuadPass {
     atlas: Atlas,
 }
 
-impl QuadPass {
+impl TextRenderer {
     pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
-        let atlas_creator = AtlasCreator::new();
+        let mut atlas_creator = AtlasCreator::new();
         let atlas = atlas_creator.create_atlas();
-        let pixel_data = atlas.pixel_data();
-        let atlas_width = atlas.width();
-        let atlas_height = atlas.height();
 
-        let texture_image =
-            create_atlas_texture(basic_context, pixel_data, atlas_width, atlas_height)
-                .expect("Failed to create texture image");
-        let sampler =
-            create_sampler(basic_context.memory_allocator()).expect("Failed to create sampler");
+        let texture_image = atlas_creator
+            .create_vulkan_image(basic_context, &atlas)
+            .unwrap();
+        let sampler = Self::create_sampler(basic_context.memory_allocator())
+            .expect("Failed to create sampler");
 
         let pipeline = Self::create_graphics_pipeline(basic_context, render_pass);
         let uniform_allocator = Self::create_uniform_allocator(basic_context);
 
-        QuadPass {
+        TextRenderer {
             pipeline,
             texture_image,
             sampler,
@@ -196,6 +198,21 @@ impl QuadPass {
         };
 
         GraphicsPipeline::new(basic_context.device().clone(), None, create_info).unwrap()
+    }
+
+    fn create_sampler(allocator: &Arc<StandardMemoryAllocator>) -> Result<Arc<Sampler>, String> {
+        let device = allocator.device();
+
+        Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                ..Default::default()
+            },
+        )
+        .map_err(|e| format!("Failed to create sampler: {}", e))
     }
 
     fn create_uniform_allocator(basic_context: &VulkanoContext) -> SubbufferAllocator {

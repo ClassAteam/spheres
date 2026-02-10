@@ -426,6 +426,8 @@ version = "0.0.0"
 dependencies = [
  "ab_glyph",
  "image",
+ "vulkano",
+ "vulkano-util",
 ]
 
 [[package]]

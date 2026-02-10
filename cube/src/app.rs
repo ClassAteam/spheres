@@ -14,8 +14,8 @@ use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
 use crate::debug_gui::DebugRenderer;
-use crate::quad_pass::QuadPass;
 use crate::render::RenderContext;
+use crate::text_renderer::TextRenderer;
 use crate::vulkan_context::VulkanBasicContext;
 
 use vulkano::sync::GpuFuture;
@@ -27,7 +27,7 @@ pub struct App {
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
-    quad: Option<QuadPass>,
+    quad: Option<TextRenderer>,
     debug_renderer: Option<DebugRenderer>,
 }
 
@@ -178,7 +178,7 @@ impl ApplicationHandler for App {
             self.render_pass.as_ref().unwrap().clone(),
         ));
 
-        self.quad = Some(QuadPass::new(
+        self.quad = Some(TextRenderer::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
         ));

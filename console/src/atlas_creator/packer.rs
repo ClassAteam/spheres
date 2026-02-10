@@ -26,7 +26,8 @@ impl Packer {
     pub fn new(area: u32) -> Self {
         let dimensions = AtlasDimensions::new(area);
         let image = GrayImage::new(dimensions.x, dimensions.y);
-        let cursor = Cursor::new(&dimensions);
+        let padding = 2;
+        let cursor = Cursor::new(&dimensions, padding);
         Self { image, cursor }
     }
 
@@ -42,7 +43,7 @@ impl Packer {
         }
     }
 
-    pub fn pack_to_atlas(mut self, glyphs: &[GlyphData]) -> Atlas {
+    pub fn pack_to_atlas(&mut self, glyphs: &[GlyphData]) -> Atlas {
         let mut meta_data = HashMap::new();
         for glyph in glyphs {
             let glyph_width = glyph.image().width();
@@ -64,7 +65,7 @@ impl Packer {
             meta_data.insert(glyph.character(), metrics);
         }
 
-        let image = self.image;
+        let image = self.image.to_owned();
 
         Atlas {
             image: image,
@@ -147,11 +148,11 @@ struct GlyphEnd {
 }
 
 impl Cursor {
-    pub fn new(dimensions: &AtlasDimensions) -> Self {
+    pub fn new(dimensions: &AtlasDimensions, padding: u32) -> Self {
         Cursor {
             atlas_width: dimensions.x,
             last_written: LastWrittenEnd { x_pos: 0, y_pos: 0 },
-            padding: 10,
+            padding,
             current_top_row_y: 0,
             current_row_height: 0,
         }
