@@ -10,8 +10,10 @@ pub struct Packer {
 }
 
 pub struct GlyphMetrics {
-    uv_min: UvMinData,
-    uv_max: UvMaxData,
+    pub width: u32,
+    pub height: u32,
+    pub uv_min: UvMinData,
+    pub uv_max: UvMaxData,
 }
 
 #[derive(Debug)]
@@ -43,19 +45,21 @@ impl Packer {
     pub fn pack_to_atlas(mut self, glyphs: &[GlyphData]) -> Atlas {
         let mut meta_data = HashMap::new();
         for glyph in glyphs {
-            let start = self
-                .cursor
-                .next_glyph_start(glyph.image().width(), glyph.image().height());
-
-            let uv_min = UvMinData::new(&start, self.image.width(), self.image.height());
-
+            let glyph_width = glyph.image().width();
+            let glyph_height = glyph.image().height();
+            let atlas_width = self.image.width();
+            let atlas_height = self.image.height();
+            let start = self.cursor.next_glyph_start(glyph_width, glyph_height);
+            let uv_min = UvMinData::new(&start, atlas_width, atlas_height);
             let end = self.write_glyph(&glyph, &start);
-
-            let uv_max = UvMaxData::new(&end, self.image.width(), self.image.height());
-
+            let uv_max = UvMaxData::new(&end, atlas_width, atlas_height);
             self.cursor.advance(start, end);
-
-            let metrics = GlyphMetrics { uv_min, uv_max };
+            let metrics = GlyphMetrics {
+                width: glyph_width,
+                height: glyph_height,
+                uv_min,
+                uv_max,
+            };
 
             meta_data.insert(glyph.character(), metrics);
         }
@@ -69,21 +73,21 @@ impl Packer {
     }
 }
 
-struct UvMinData {
-    min_x: f32,
-    min_y: f32,
+pub struct UvMinData {
+    pub x: f32,
+    pub y: f32,
 }
 
-struct UvMaxData {
-    max_x: f32,
-    max_y: f32,
+pub struct UvMaxData {
+    pub x: f32,
+    pub y: f32,
 }
 
 impl UvMinData {
     fn new(first_corner: &GlyphStart, atlas_width: u32, atlas_height: u32) -> Self {
         Self {
-            min_x: first_corner.x_pos as f32 / atlas_width as f32,
-            min_y: first_corner.top_row_y as f32 / atlas_height as f32,
+            x: first_corner.x_pos as f32 / atlas_width as f32,
+            y: first_corner.top_row_y as f32 / atlas_height as f32,
         }
     }
 }
@@ -91,8 +95,8 @@ impl UvMinData {
 impl UvMaxData {
     fn new(second_corner: &GlyphEnd, atlas_width: u32, atlas_height: u32) -> Self {
         Self {
-            max_x: second_corner.x_pos as f32 / atlas_width as f32,
-            max_y: second_corner.y_pos as f32 / atlas_height as f32,
+            x: second_corner.x_pos as f32 / atlas_width as f32,
+            y: second_corner.y_pos as f32 / atlas_height as f32,
         }
     }
 }

@@ -133,12 +133,11 @@ impl App {
             &mut cb,
         );
 
-        // self.quad.as_mut().unwrap().draw_within_pass(
-        //     renderer.as_ref().unwrap().aspect_ratio(),
-        //     descriptor_set_allocator.clone(),
-        //     extent,
-        //     &mut cb,
-        // );
+        self.quad.as_mut().unwrap().draw_within_pass(
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
 
         cb.end_render_pass(Default::default()).unwrap();
 

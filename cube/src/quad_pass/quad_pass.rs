@@ -1,6 +1,7 @@
-use console::atlas_creator::{self, AtlasCreator};
+use console::atlas_creator::{Atlas, AtlasCreator, GlyphMetrics};
 use std::path::Path;
 use std::sync::Arc;
+use std::{collections::HashMap, str::FromStr};
 
 use vulkano::{
     buffer::{
@@ -52,6 +53,7 @@ pub struct QuadPass {
     sampler: Arc<Sampler>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     uniform_allocator: SubbufferAllocator,
+    atlas: Atlas,
     text: String,
 }
 
@@ -82,6 +84,7 @@ impl QuadPass {
             sampler,
             memory_allocator: basic_context.memory_allocator().clone(),
             uniform_allocator,
+            atlas: atlas,
             text: String::from("HELLO WORLD"),
         }
     }
@@ -89,6 +92,14 @@ impl QuadPass {
     #[allow(dead_code)]
     pub fn set_text(&mut self, text: &str) {
         self.text = text.to_string();
+    }
+
+    fn create_text_geometry(&self) -> TextGeometry {
+        let start = StartPixelPoint { x: 20.0, y: 40.0 };
+        let text = "poshel_nahuy".to_string();
+        let info = &self.atlas.info;
+        let mut creator = TextGeometryCreator::new(start);
+        creator.build(text, info)
     }
 
     fn create_graphics_pipeline(
@@ -219,85 +230,192 @@ impl QuadPass {
         subbuffer
     }
 
-    // pub fn draw_within_pass(
-    //     &mut self,
-    //     _aspect_ratio: f32,
-    //     desc_alloc: Arc<StandardDescriptorSetAllocator>,
-    //     extent: [f32; 2],
-    //     cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-    // ) {
-    //     // Build per-frame vertex and index buffers from the laid-out glyphs
-    //     let vertex_buffer = Buffer::from_iter(
-    //         self.memory_allocator.clone(),
-    //         BufferCreateInfo {
-    //             usage: BufferUsage::VERTEX_BUFFER,
-    //             ..Default::default()
-    //         },
-    //         AllocationCreateInfo {
-    //             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-    //                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-    //             ..Default::default()
-    //         },
-    //         verts,
-    //     )
-    //     .unwrap();
+    pub fn draw_within_pass(
+        &mut self,
+        desc_alloc: Arc<StandardDescriptorSetAllocator>,
+        extent: [f32; 2],
+        cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+    ) {
+        let text_geometry = self.create_text_geometry();
+        let vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            text_geometry.vertices,
+        )
+        .unwrap();
 
-    //     let index_buffer = Buffer::from_iter(
-    //         self.memory_allocator.clone(),
-    //         BufferCreateInfo {
-    //             usage: BufferUsage::INDEX_BUFFER,
-    //             ..Default::default()
-    //         },
-    //         AllocationCreateInfo {
-    //             memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
-    //                 | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
-    //             ..Default::default()
-    //         },
-    //         idxs,
-    //     )
-    //     .unwrap();
+        let index_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            text_geometry.indices,
+        )
+        .unwrap();
 
-    //     let index_count = index_buffer.len() as u32;
+        let index_count = index_buffer.len() as u32;
 
-    //     let uniform_buffer = self.update_uniform(extent);
-    //     let layout = self.pipeline.layout().set_layouts()[0].clone();
+        let uniform_buffer = self.update_uniform(extent);
+        let layout = self.pipeline.layout().set_layouts()[0].clone();
 
-    //     let descriptor_set = DescriptorSet::new(
-    //         desc_alloc,
-    //         layout,
-    //         [
-    //             WriteDescriptorSet::buffer(0, uniform_buffer),
-    //             WriteDescriptorSet::image_view_sampler(
-    //                 1,
-    //                 self.texture_image.clone(),
-    //                 self.sampler.clone(),
-    //             ),
-    //         ],
-    //         [],
-    //     )
-    //     .unwrap();
+        let descriptor_set = DescriptorSet::new(
+            desc_alloc,
+            layout,
+            [
+                WriteDescriptorSet::buffer(0, uniform_buffer),
+                WriteDescriptorSet::image_view_sampler(
+                    1,
+                    self.texture_image.clone(),
+                    self.sampler.clone(),
+                ),
+            ],
+            [],
+        )
+        .unwrap();
 
-    //     let viewport = Viewport {
-    //         offset: [0.0, 0.0],
-    //         extent,
-    //         depth_range: 0.0..=1.0,
-    //     };
-    //     cb.set_viewport(0, [viewport].into_iter().collect())
-    //         .unwrap();
+        let viewport = Viewport {
+            offset: [0.0, 0.0],
+            extent,
+            depth_range: 0.0..=1.0,
+        };
+        cb.set_viewport(0, [viewport].into_iter().collect())
+            .unwrap();
 
-    //     cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
+        cb.bind_pipeline_graphics(self.pipeline.clone()).unwrap();
 
-    //     cb.bind_descriptor_sets(
-    //         PipelineBindPoint::Graphics,
-    //         self.pipeline.layout().clone(),
-    //         0,
-    //         descriptor_set,
-    //     )
-    //     .unwrap();
+        cb.bind_descriptor_sets(
+            PipelineBindPoint::Graphics,
+            self.pipeline.layout().clone(),
+            0,
+            descriptor_set,
+        )
+        .unwrap();
 
-    //     cb.bind_vertex_buffers(0, vertex_buffer).unwrap();
-    //     cb.bind_index_buffer(index_buffer).unwrap();
+        cb.bind_vertex_buffers(0, vertex_buffer).unwrap();
+        cb.bind_index_buffer(index_buffer).unwrap();
 
-    //     unsafe { cb.draw_indexed(index_count, 1, 0, 0, 0) }.unwrap();
-    // }
+        unsafe { cb.draw_indexed(index_count, 1, 0, 0, 0) }.unwrap();
+    }
+}
+
+struct TextGeometry {
+    pub vertices: Vec<QuadVertex>,
+    pub indices: Vec<u16>,
+}
+
+struct PixelPoint {
+    x: f32,
+    y: f32,
+    spacing: f32,
+}
+
+impl PixelPoint {
+    pub fn new(start_pos: StartPixelPoint) -> Self {
+        Self {
+            x: start_pos.x,
+            y: start_pos.y,
+            spacing: 2.0,
+        }
+    }
+
+    pub fn iterate(&mut self, glyph_width: f32) {
+        self.x += glyph_width + self.spacing;
+    }
+}
+
+struct StartPixelPoint {
+    x: f32,
+    y: f32,
+}
+
+struct TextGeometryCreator {
+    point: PixelPoint,
+}
+
+impl TextGeometryCreator {
+    pub fn new(start: StartPixelPoint) -> Self {
+        Self {
+            point: PixelPoint::new(start),
+        }
+    }
+
+    fn new_rectangle(&mut self, glyph_width: f32, glyph_height: f32) -> PixelRectangle {
+        let left = self.point.x;
+        let top = self.point.y;
+        let right = self.point.x + glyph_width;
+        let bottom = self.point.y + glyph_height;
+        self.point.iterate(glyph_width);
+        PixelRectangle {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    fn build(&mut self, text: String, info: &HashMap<char, GlyphMetrics>) -> TextGeometry {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for ch in text.chars() {
+            if let Some(glyph_metrics) = info.get(&ch) {
+                let glyph_width = glyph_metrics.width as f32;
+                let glyph_height = glyph_metrics.height as f32;
+                let rectangle = self.new_rectangle(glyph_width, glyph_height);
+                let first_vertex_index = vertices.len() as u16;
+                let top_left = QuadVertex {
+                    position: [rectangle.left, rectangle.top, 0.0],
+                    uv: [glyph_metrics.uv_min.x, glyph_metrics.uv_min.y],
+                };
+                let top_right = QuadVertex {
+                    position: [rectangle.right, rectangle.top, 0.0],
+                    uv: [glyph_metrics.uv_max.x, glyph_metrics.uv_min.y],
+                };
+                let bottom_right = QuadVertex {
+                    position: [rectangle.right, rectangle.bottom, 0.0],
+                    uv: [glyph_metrics.uv_max.x, glyph_metrics.uv_max.y],
+                };
+                let bottom_left = QuadVertex {
+                    position: [rectangle.left, rectangle.bottom, 0.0],
+                    uv: [glyph_metrics.uv_min.x, glyph_metrics.uv_max.y],
+                };
+                vertices.push(top_left);
+                vertices.push(top_right);
+                vertices.push(bottom_right);
+                vertices.push(bottom_left);
+
+                let tl = first_vertex_index;
+                let tr = first_vertex_index + 1;
+                let br = first_vertex_index + 2;
+                let bl = first_vertex_index + 3;
+
+                indices.extend_from_slice(&[
+                    tl, tr, br, // First triangle
+                    br, bl, tl, // Second triangle
+                ]);
+            }
+        }
+        TextGeometry { vertices, indices }
+    }
+}
+
+struct PixelRectangle {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
 }
