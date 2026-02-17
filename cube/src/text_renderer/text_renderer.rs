@@ -60,6 +60,11 @@ pub struct TextRenderer {
     atlas: Atlas,
 }
 
+pub trait TextInfo {
+    fn text(&self) -> String;
+    fn place(&self) -> PixelPoint;
+}
+
 impl TextRenderer {
     pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
         let mut atlas_creator = AtlasCreator::new();
@@ -84,14 +89,10 @@ impl TextRenderer {
         }
     }
 
-    fn create_text_geometry(&self, text: String) -> TextGeometry {
-        let start = StartPixelPoint {
-            x: 2500.0,
-            y: 1000.0,
-        };
-        let info = &self.atlas.info;
-        let mut creator = TextGeometryCreator::new(start);
-        creator.build(text, info)
+    fn create_text_geometry(&self, string: String, starting_pixel: PixelPoint) -> TextGeometry {
+        let atlas_info = &self.atlas.info;
+        let mut creator = TextGeometryCreator::new(starting_pixel);
+        creator.build(string, atlas_info)
     }
 
     fn create_graphics_pipeline(
@@ -241,10 +242,10 @@ impl TextRenderer {
         &mut self,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         extent: [f32; 2],
-        fps: f32,
+        text_info: &dyn TextInfo,
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let text_geometry = self.create_text_geometry(format!("FPS:{:.1}", fps));
+        let text_geometry = self.create_text_geometry(text_info.text(), text_info.place());
         let vertex_buffer = Buffer::from_iter(
             self.memory_allocator.clone(),
             BufferCreateInfo {
@@ -325,48 +326,41 @@ struct TextGeometry {
     pub indices: Vec<u16>,
 }
 
-struct PixelPoint {
-    x: f32,
-    y: f32,
-    spacing: f32,
-}
-
-impl PixelPoint {
-    pub fn new(start_pos: StartPixelPoint) -> Self {
-        Self {
-            x: start_pos.x,
-            y: start_pos.y,
-            spacing: 2.0,
-        }
-    }
-
-    pub fn iterate(&mut self, glyph_width: f32) {
-        self.x += glyph_width + self.spacing;
-    }
-}
-
-struct StartPixelPoint {
-    x: f32,
-    y: f32,
+#[derive(Copy, Clone)]
+pub struct PixelPoint {
+    pub x: f32,
+    pub y: f32,
 }
 
 struct TextGeometryCreator {
-    point: PixelPoint,
+    spacing: f32,
+    current_point: PixelPoint,
+    last_line_start: PixelPoint,
+    last_height: f32,
+    starting_pos: PixelPoint,
 }
 
 impl TextGeometryCreator {
-    pub fn new(start: StartPixelPoint) -> Self {
+    pub fn new(start: PixelPoint) -> Self {
         Self {
-            point: PixelPoint::new(start),
+            current_point: start,
+            last_line_start: start,
+            last_height: 0.0,
+            spacing: 2.0,
+            starting_pos: start,
         }
     }
 
+    pub fn move_right(&mut self, glyph_width: f32) {
+        self.current_point.x += glyph_width + self.spacing;
+    }
+
     fn new_rectangle(&mut self, glyph_width: f32, glyph_height: f32) -> PixelRectangle {
-        let left = self.point.x;
-        let top = self.point.y;
-        let right = self.point.x + glyph_width;
-        let bottom = self.point.y - glyph_height;
-        self.point.iterate(glyph_width);
+        let left = self.current_point.x;
+        let top = self.current_point.y;
+        let right = self.current_point.x + glyph_width;
+        let bottom = self.current_point.y - glyph_height;
+        self.move_right(glyph_width);
         PixelRectangle {
             left,
             top,
@@ -375,14 +369,24 @@ impl TextGeometryCreator {
         }
     }
 
+    fn start_newline(&mut self) {
+        self.current_point.x = self.last_line_start.x;
+        self.current_point.y = self.current_point.y - self.last_height;
+    }
+
     fn build(&mut self, text: String, info: &HashMap<char, GlyphMetrics>) -> TextGeometry {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
 
         for ch in text.chars() {
+            if ch == '\n' {
+                self.start_newline();
+                continue;
+            }
             if let Some(glyph_metrics) = info.get(&ch) {
                 let glyph_width = glyph_metrics.width as f32;
                 let glyph_height = glyph_metrics.height as f32;
+                self.last_height = self.last_height.max(glyph_height);
                 let rectangle = self.new_rectangle(glyph_width, glyph_height);
                 let first_vertex_index = vertices.len() as u16;
                 let top_left = QuadVertex {

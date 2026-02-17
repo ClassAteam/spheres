@@ -13,7 +13,7 @@ use winit::window::WindowId;
 use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
-use crate::debug_gui::DebugRenderer;
+// use crate::debug_gui::DebugRenderer;
 use crate::render::RenderContext;
 use crate::text_renderer::TextRenderer;
 use crate::vulkan_context::VulkanBasicContext;
@@ -27,8 +27,8 @@ pub struct App {
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
-    quad: Option<TextRenderer>,
-    debug_renderer: Option<DebugRenderer>,
+    text_pass: Option<TextRenderer>,
+    // debug_renderer: Option<DebugRenderer>,
 }
 
 impl App {
@@ -41,8 +41,8 @@ impl App {
             rdx: None,
             render_pass: None,
             cube: None,
-            quad: None,
-            debug_renderer: None,
+            text_pass: None,
+            // debug_renderer: None,
         }
     }
 
@@ -133,10 +133,10 @@ impl App {
             &mut cb,
         );
 
-        self.quad.as_mut().unwrap().draw_within_pass(
+        self.text_pass.as_mut().unwrap().draw_within_pass(
             descriptor_set_allocator.clone(),
             extent,
-            self.fps_counter.fps(),
+            &self.fps_counter,
             &mut cb,
         );
 
@@ -145,20 +145,22 @@ impl App {
         let command_buffer = cb.build().unwrap();
 
         let queue = &renderer.as_ref().unwrap().graphics_queue();
-        let cube_frame_ready_future = acquire_future.then_execute(queue.clone(), command_buffer);
+        let cube_frame_ready_future = acquire_future
+            .then_execute(queue.clone(), command_buffer)
+            .unwrap();
 
-        let debug_pass_ready_future = self.debug_renderer.as_mut().unwrap().draw_ui(
-            self.rdx.as_ref().unwrap(),
-            &self.fps_counter,
-            self.cube.as_ref().unwrap().get_transform_state(),
-            cube_frame_ready_future.unwrap().boxed(),
-            true,
-        );
+        // let debug_pass_ready_future = self.debug_renderer.as_mut().unwrap().draw_ui(
+        //     self.rdx.as_ref().unwrap(),
+        //     &self.fps_counter,
+        //     self.cube.as_ref().unwrap().get_transform_state(),
+        //     cube_frame_ready_future.unwrap().boxed(),
+        //     true,
+        // );
 
         self.rdx
             .as_mut()
             .unwrap()
-            .present(Box::new(debug_pass_ready_future));
+            .present(Box::new(cube_frame_ready_future));
     }
 }
 
@@ -178,24 +180,24 @@ impl ApplicationHandler for App {
             self.render_pass.as_ref().unwrap().clone(),
         ));
 
-        self.quad = Some(TextRenderer::new(
+        self.text_pass = Some(TextRenderer::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
         ));
 
-        self.debug_renderer = if self.config.debug_ui_enabled {
-            Some(DebugRenderer::new(
-                event_loop,
-                self.rdx
-                    .as_mut()
-                    .unwrap()
-                    .window_ctx
-                    .get_renderer_mut(id)
-                    .unwrap(),
-            ))
-        } else {
-            None
-        }
+        // self.debug_renderer = if self.config.debug_ui_enabled {
+        //     Some(DebugRenderer::new(
+        //         event_loop,
+        //         self.rdx
+        //             .as_mut()
+        //             .unwrap()
+        //             .window_ctx
+        //             .get_renderer_mut(id)
+        //             .unwrap(),
+        //     ))
+        // } else {
+        //     None
+        // }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
