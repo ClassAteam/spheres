@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::atlas_creator::glyph::{GlyphData, Glyphs};
 use crate::atlas_creator::packer::{GlyphMetrics, Packer};
-use ab_glyph::{FontArc, PxScale};
+use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use image::GrayImage;
 use vulkano::buffer::{Buffer, BufferCreateInfo, BufferUsage};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
@@ -21,6 +21,7 @@ use vulkano_util::context::VulkanoContext;
 pub struct AtlasCreator {
     glyphs: Glyphs,
     packer: Packer,
+    line_height: f32,
 }
 
 impl AtlasCreator {
@@ -29,15 +30,20 @@ impl AtlasCreator {
         let font = FontArc::try_from_slice(font_data).unwrap();
 
         let scale = PxScale::from(30.0);
+        let line_height = {
+            let scaled = font.as_scaled(scale);
+            scaled.ascent() - scaled.descent() + scaled.line_gap()
+        };
+
         let glyphs = Glyphs::new(font, scale);
         let total_area = glyphs.total_area();
         let packer = Packer::new(total_area);
-        AtlasCreator { glyphs, packer }
+        AtlasCreator { glyphs, packer, line_height }
     }
 
     pub fn create_atlas(&mut self) -> Atlas {
         let glyphs = &self.glyphs.data;
-        self.packer.pack_to_atlas(glyphs)
+        self.packer.pack_to_atlas(glyphs, self.line_height)
     }
 
     pub fn create_vulkan_image(
@@ -130,11 +136,33 @@ impl AtlasCreator {
 pub struct Atlas {
     pub image: GrayImage,
     pub info: HashMap<char, GlyphMetrics>,
+    pub ascent: f32,
+    pub line_height: f32,
 }
 
 impl Atlas {
     pub fn write_to_file(&self) {
         self.image.save("output.png").unwrap();
+
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "Atlas: {}x{}\n",
+            self.image.width(),
+            self.image.height()
+        ));
+
+        let mut chars: Vec<char> = self.info.keys().copied().collect();
+        chars.sort();
+
+        for ch in chars {
+            let m = &self.info[&ch];
+            lines.push(format!(
+                "'{ch}' (U+{:04X})  size={}x{}  uv_min=({:.4},{:.4})  uv_max=({:.4},{:.4})\n",
+                ch as u32, m.width, m.height, m.uv_min.x, m.uv_min.y, m.uv_max.x, m.uv_max.y,
+            ));
+        }
+
+        std::fs::write("output_glyphs.txt", lines.join("")).unwrap();
     }
 
     pub fn pixel_data(&self) -> &[u8] {

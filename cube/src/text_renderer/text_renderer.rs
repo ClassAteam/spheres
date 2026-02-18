@@ -91,7 +91,8 @@ impl TextRenderer {
 
     fn create_text_geometry(&self, string: String, starting_pixel: PixelPoint) -> TextGeometry {
         let atlas_info = &self.atlas.info;
-        let mut creator = TextGeometryCreator::new(starting_pixel);
+        let mut creator =
+            TextGeometryCreator::new(starting_pixel, self.atlas.ascent, self.atlas.line_height);
         creator.build(string, atlas_info)
     }
 
@@ -333,34 +334,42 @@ pub struct PixelPoint {
 }
 
 struct TextGeometryCreator {
-    spacing: f32,
+    spacing_x: f32,
+    line_height: f32,
     current_point: PixelPoint,
     last_line_start: PixelPoint,
-    last_height: f32,
-    starting_pos: PixelPoint,
+    line_ascend: f32,
 }
 
 impl TextGeometryCreator {
-    pub fn new(start: PixelPoint) -> Self {
+    pub fn new(start: PixelPoint, ascent: f32, line_height: f32) -> Self {
         Self {
             current_point: start,
             last_line_start: start,
-            last_height: 0.0,
-            spacing: 2.0,
-            starting_pos: start,
+            line_ascend: ascent,
+            spacing_x: 0.0,
+            line_height,
         }
     }
 
-    pub fn move_right(&mut self, glyph_width: f32) {
-        self.current_point.x += glyph_width + self.spacing;
+    pub fn move_right(&mut self, advance_width: f32) {
+        self.current_point.x += advance_width + self.spacing_x;
     }
 
-    fn new_rectangle(&mut self, glyph_width: f32, glyph_height: f32) -> PixelRectangle {
-        let left = self.current_point.x;
-        let top = self.current_point.y;
-        let right = self.current_point.x + glyph_width;
-        let bottom = self.current_point.y - glyph_height;
-        self.move_right(glyph_width);
+    fn new_rectangle(
+        &mut self,
+        glyph_width: f32,
+        glyph_height: f32,
+        bearing_x: f32,
+        bearing_y: f32,
+        advance_width: f32,
+    ) -> PixelRectangle {
+        let y_offset = self.line_ascend - bearing_y;
+        let top = self.current_point.y + y_offset;
+        let left = self.current_point.x + bearing_x;
+        let right = left + glyph_width;
+        let bottom = top + glyph_height;
+        self.move_right(advance_width);
         PixelRectangle {
             left,
             top,
@@ -371,7 +380,7 @@ impl TextGeometryCreator {
 
     fn start_newline(&mut self) {
         self.current_point.x = self.last_line_start.x;
-        self.current_point.y = self.current_point.y - self.last_height;
+        self.current_point.y = self.current_point.y + self.line_height;
     }
 
     fn build(&mut self, text: String, info: &HashMap<char, GlyphMetrics>) -> TextGeometry {
@@ -386,8 +395,16 @@ impl TextGeometryCreator {
             if let Some(glyph_metrics) = info.get(&ch) {
                 let glyph_width = glyph_metrics.width as f32;
                 let glyph_height = glyph_metrics.height as f32;
-                self.last_height = self.last_height.max(glyph_height);
-                let rectangle = self.new_rectangle(glyph_width, glyph_height);
+                let bearing_x = glyph_metrics.bearing_x;
+                let bearing_y = glyph_metrics.bearing_y;
+                let advance_width = glyph_metrics.advance_width;
+                let rectangle = self.new_rectangle(
+                    glyph_width,
+                    glyph_height,
+                    bearing_x,
+                    bearing_y,
+                    advance_width,
+                );
                 let first_vertex_index = vertices.len() as u16;
                 let top_left = QuadVertex {
                     position: [rectangle.left, rectangle.top, 0.0],

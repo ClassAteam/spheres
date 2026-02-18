@@ -14,6 +14,9 @@ pub struct GlyphMetrics {
     pub height: u32,
     pub uv_min: UvMinData,
     pub uv_max: UvMaxData,
+    pub bearing_x: f32,
+    pub bearing_y: f32,
+    pub advance_width: f32,
 }
 
 #[derive(Debug)]
@@ -43,7 +46,7 @@ impl Packer {
         }
     }
 
-    pub fn pack_to_atlas(&mut self, glyphs: &[GlyphData]) -> Atlas {
+    pub fn pack_to_atlas(&mut self, glyphs: &[GlyphData], line_height: f32) -> Atlas {
         let mut meta_data = HashMap::new();
         for glyph in glyphs {
             let glyph_width = glyph.image().width();
@@ -60,16 +63,25 @@ impl Packer {
                 height: glyph_height,
                 uv_min,
                 uv_max,
+                bearing_x: glyph.bearing_x(),
+                bearing_y: glyph.bearing_y(),
+                advance_width: glyph.advance_width(),
             };
 
             meta_data.insert(glyph.character(), metrics);
         }
 
+        let ascent = glyphs.iter()
+            .map(|g| g.bearing_y())
+            .fold(0.0f32, f32::max);
+
         let image = self.image.to_owned();
 
         Atlas {
-            image: image,
+            image,
             info: meta_data,
+            ascent,
+            line_height,
         }
     }
 }

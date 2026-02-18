@@ -11,7 +11,7 @@ layout(set = 0, binding = 0) uniform Data {
 
 void main() {
     vec2 ndc = position.xy / uniforms.screen_size * 2.0 - 1.0;
-    ndc.y = -ndc.y;
+    // ndc.y = ndc.y;
     gl_Position = vec4(ndc, 0.0, 1.0);
     fragUV = uv;
 }
