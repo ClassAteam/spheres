@@ -36,13 +36,16 @@ use vulkano::{
 };
 use vulkano_util::context::VulkanoContext;
 
-use crate::cube_pass::{
-    models::{INDICES, POSITIONS, Position},
-    shaders::{
-        fs,
-        vs::{self, Data},
+use crate::{
+    cube_pass::{
+        models::{INDICES, POSITIONS, Position},
+        shaders::{
+            fs,
+            vs::{self, Data},
+        },
+        transform::TransformState,
     },
-    transform::TransformState,
+    text_renderer::{PixelPoint, TextInfo, TextItem},
 };
 
 pub struct CubePass {
@@ -358,5 +361,14 @@ impl CubePass {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
+    }
+}
+
+impl TextInfo for CubePass {
+    fn text_items(&self) -> Vec<TextItem> {
+        vec![TextItem {
+            text: format!("Transform state:{:#?}", self.transform),
+            place: PixelPoint { x: 0.0, y: 0.0 },
+        }]
     }
 }

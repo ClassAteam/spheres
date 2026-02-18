@@ -136,7 +136,7 @@ impl App {
         self.text_pass.as_mut().unwrap().draw_within_pass(
             descriptor_set_allocator.clone(),
             extent,
-            &self.fps_counter,
+            self.cube.as_ref().unwrap(),
             &mut cb,
         );
 

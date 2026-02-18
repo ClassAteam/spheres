@@ -60,9 +60,13 @@ pub struct TextRenderer {
     atlas: Atlas,
 }
 
+pub struct TextItem {
+    pub text: String,
+    pub place: PixelPoint,
+}
+
 pub trait TextInfo {
-    fn text(&self) -> String;
-    fn place(&self) -> PixelPoint;
+    fn text_items(&self) -> Vec<TextItem>;
 }
 
 impl TextRenderer {
@@ -239,6 +243,13 @@ impl TextRenderer {
         subbuffer
     }
 
+    fn generate_geometry(&self, text_info: &dyn TextInfo) -> TextGeometry {
+        let mut text_geometry = TextGeometry::new();
+        for item in text_info.text_items() {
+            text_geometry.append(self.create_text_geometry(item.text, item.place));
+        }
+        text_geometry
+    }
     pub fn draw_within_pass(
         &mut self,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
@@ -246,7 +257,7 @@ impl TextRenderer {
         text_info: &dyn TextInfo,
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        let text_geometry = self.create_text_geometry(text_info.text(), text_info.place());
+        let text_geometry = self.generate_geometry(text_info);
         let vertex_buffer = Buffer::from_iter(
             self.memory_allocator.clone(),
             BufferCreateInfo {
@@ -323,8 +334,24 @@ impl TextRenderer {
 }
 
 struct TextGeometry {
-    pub vertices: Vec<QuadVertex>,
-    pub indices: Vec<u16>,
+    vertices: Vec<QuadVertex>,
+    indices: Vec<u16>,
+}
+
+impl TextGeometry {
+    fn new() -> Self {
+        TextGeometry {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+        }
+    }
+
+    fn append(&mut self, other: TextGeometry) {
+        let index_offset = self.vertices.len() as u16;
+        self.vertices.extend(other.vertices);
+        self.indices
+            .extend(other.indices.iter().map(|i| i + index_offset));
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -334,7 +361,6 @@ pub struct PixelPoint {
 }
 
 struct TextGeometryCreator {
-    spacing_x: f32,
     line_height: f32,
     current_point: PixelPoint,
     last_line_start: PixelPoint,
@@ -347,13 +373,12 @@ impl TextGeometryCreator {
             current_point: start,
             last_line_start: start,
             line_ascend: ascent,
-            spacing_x: 0.0,
             line_height,
         }
     }
 
     pub fn move_right(&mut self, advance_width: f32) {
-        self.current_point.x += advance_width + self.spacing_x;
+        self.current_point.x += advance_width;
     }
 
     fn new_rectangle(
