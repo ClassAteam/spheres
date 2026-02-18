@@ -54,6 +54,7 @@ pub struct CubePass {
     index_buffer: Subbuffer<[u16]>,
     transform: TransformState,
     uniform_allocator: SubbufferAllocator,
+    aspect_ratio: f32,
 }
 
 impl CubePass {
@@ -68,6 +69,7 @@ impl CubePass {
             index_buffer,
             transform: TransformState::new(),
             uniform_allocator,
+            aspect_ratio: 1.0,
         }
     }
 
@@ -327,6 +329,7 @@ impl CubePass {
         extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
+        self.aspect_ratio = aspect_ratio;
         let uniform_buffer = self.update_uniform(aspect_ratio);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(
@@ -366,9 +369,32 @@ impl CubePass {
 
 impl TextInfo for CubePass {
     fn text_items(&self) -> Vec<TextItem> {
-        vec![TextItem {
-            text: format!("Transform state:{:#?}", self.transform),
-            place: PixelPoint { x: 0.0, y: 0.0 },
-        }]
+        let mut vertices_text = String::from("Vertices (Transformed):\n");
+        for (i, vertex) in POSITIONS.iter().enumerate() {
+            let t = self
+                .transform
+                .transform_vertex(vertex.position, self.aspect_ratio);
+            vertices_text.push_str(&format!(
+                "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]\n",
+                i,
+                t.clip_space[0],
+                t.clip_space[1],
+                t.clip_space[2],
+                t.clip_space[3],
+                t.ndc[0],
+                t.ndc[1],
+                t.ndc[2],
+            ));
+        }
+        vec![
+            TextItem {
+                text: format!("Transform state:{:#?}", self.transform),
+                place: PixelPoint { x: 0.0, y: 0.0 },
+            },
+            TextItem {
+                text: vertices_text,
+                place: PixelPoint { x: 2100.0, y: 0.0 },
+            },
+        ]
     }
 }
