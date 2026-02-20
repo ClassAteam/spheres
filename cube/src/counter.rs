@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use crate::text_renderer::{PixelPoint, TextInfo, TextItem};
+
 pub struct FpsCounter {
     last_frame: Instant,
     frame_times: Vec<f32>,
@@ -40,6 +42,18 @@ impl FpsCounter {
         }
         let avg_time: f32 = self.frame_times.iter().sum::<f32>() / self.frame_times.len() as f32;
         avg_time * 1000.0
+    }
+}
+
+impl TextInfo for FpsCounter {
+    fn text_items(&self) -> Vec<TextItem> {
+        let fps = self.fps();
+        let frame_time = self.frame_time_ms();
+
+        vec![TextItem {
+            text: format!("FPS: {:.1}\nFrame Time: {:.2} ms", fps, frame_time),
+            place: PixelPoint { x: 10.0, y: 10.0 },
+        }]
     }
 }
 

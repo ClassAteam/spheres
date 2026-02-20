@@ -3,7 +3,7 @@ use std::sync::Arc;
 use glam::Vec3;
 use vulkano::{
     buffer::{
-        Buffer, BufferCreateInfo, BufferUsage, Subbuffer,
+        Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
     },
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
@@ -36,19 +36,138 @@ use vulkano::{
 };
 use vulkano_util::context::VulkanoContext;
 
-use crate::{
-    cube_pass::{
-        models::{INDICES, POSITIONS, Position},
-        shaders::{
-            fs,
-            vs::{self, Data},
-        },
-    },
-    text_renderer::{PixelPoint, TextInfo, TextItem},
-    transform::TransformState,
+use crate::transform::TransformState;
+
+use crate::proc_cube_pass::shaders::{
+    fs,
+    vs::{self, Data},
 };
 
-pub struct CubePass {
+#[derive(BufferContents, Vertex, Debug, Clone, Copy)]
+#[repr(C)]
+pub struct Position {
+    #[format(R32G32B32_SFLOAT)]
+    pub position: [f32; 3],
+    #[format(R32G32B32_SFLOAT)]
+    pub color: [f32; 3],
+}
+
+/// Face orientation for procedural cube generation
+#[derive(Debug, Clone, Copy)]
+enum Face {
+    Back,   // -Z
+    Front,  // +Z
+    Left,   // -X
+    Right,  // +X
+    Bottom, // +Y
+    Top,    // -Y
+}
+
+impl Face {
+    fn vertices(&self) -> [[f32; 3]; 4] {
+        match self {
+            Face::Back => [
+                [-1.0, 1.0, -1.0],  // Top-left
+                [1.0, 1.0, -1.0],   // Top-right
+                [1.0, -1.0, -1.0],  // Bottom-right
+                [-1.0, -1.0, -1.0], // Bottom-left
+            ],
+            Face::Front => [
+                [-1.0, 1.0, 1.0],  // Top-left
+                [1.0, 1.0, 1.0],   // Top-right
+                [1.0, -1.0, 1.0],  // Bottom-right
+                [-1.0, -1.0, 1.0], // Bottom-left
+            ],
+            Face::Left => [
+                [-1.0, 1.0, -1.0],  // Top-back
+                [-1.0, -1.0, -1.0], // Bottom-back
+                [-1.0, -1.0, 1.0],  // Bottom-front
+                [-1.0, 1.0, 1.0],   // Top-front
+            ],
+            Face::Right => [
+                [1.0, 1.0, -1.0],  // Top-back
+                [1.0, 1.0, 1.0],   // Top-front
+                [1.0, -1.0, 1.0],  // Bottom-front
+                [1.0, -1.0, -1.0], // Bottom-back
+            ],
+            Face::Bottom => [
+                [-1.0, 1.0, -1.0], // Back-left
+                [-1.0, 1.0, 1.0],  // Front-left
+                [1.0, 1.0, 1.0],   // Front-right
+                [1.0, 1.0, -1.0],  // Back-right
+            ],
+            Face::Top => [
+                [-1.0, -1.0, -1.0], // Back-left
+                [1.0, -1.0, -1.0],  // Back-right
+                [1.0, -1.0, 1.0],   // Front-right
+                [-1.0, -1.0, 1.0],  // Front-left
+            ],
+        }
+    }
+
+    fn color(&self) -> [f32; 3] {
+        match self {
+            Face::Back => [1.0, 0.0, 0.0],   // Red
+            Face::Front => [0.0, 1.0, 0.0],  // Green
+            Face::Left => [0.0, 0.0, 1.0],   // Blue
+            Face::Right => [1.0, 1.0, 0.0],  // Yellow
+            Face::Bottom => [1.0, 0.0, 1.0], // Magenta
+            Face::Top => [0.0, 1.0, 1.0],    // Cyan
+        }
+    }
+}
+
+/// Generate procedural cube vertices
+fn generate_cube_vertices() -> Vec<Position> {
+    let faces = [
+        Face::Back,
+        Face::Front,
+        Face::Left,
+        Face::Right,
+        Face::Bottom,
+        Face::Top,
+    ];
+
+    let mut vertices = Vec::with_capacity(24); // 6 faces × 4 vertices
+
+    for face in &faces {
+        let color = face.color();
+        let positions = face.vertices();
+
+        for position in &positions {
+            vertices.push(Position {
+                position: *position,
+                color,
+            });
+        }
+    }
+
+    vertices
+}
+
+/// Generate procedural cube indices
+fn generate_cube_indices() -> Vec<u16> {
+    let mut indices = Vec::with_capacity(36); // 6 faces × 2 triangles × 3 vertices
+
+    // Generate indices for all 6 faces
+    for face_index in 0..6 {
+        let base = (face_index * 4) as u16;
+
+        // First triangle (0, 1, 2)
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base + 2);
+
+        // Second triangle (2, 3, 0)
+        indices.push(base + 2);
+        indices.push(base + 3);
+        indices.push(base);
+    }
+
+    indices
+}
+
+pub struct ProcCubePass {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Subbuffer<[Position]>,
     index_buffer: Subbuffer<[u16]>,
@@ -57,13 +176,13 @@ pub struct CubePass {
     aspect_ratio: f32,
 }
 
-impl CubePass {
+impl ProcCubePass {
     pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
         let pipeline = Self::create_graphics_pipeline(basic_context, render_pass.clone());
         let vertex_buffer = Self::create_vertex_buffers(basic_context);
         let index_buffer = Self::create_index_buffer(basic_context);
         let uniform_allocator = Self::create_uniform_buffers(basic_context);
-        CubePass {
+        ProcCubePass {
             pipeline,
             vertex_buffer,
             index_buffer,
@@ -261,6 +380,7 @@ impl CubePass {
     }
 
     fn create_vertex_buffers(basic_context: &VulkanoContext) -> Subbuffer<[Position]> {
+        let vertices = generate_cube_vertices();
         let buffers = Buffer::from_iter(
             basic_context.memory_allocator().clone(),
             BufferCreateInfo {
@@ -272,13 +392,14 @@ impl CubePass {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            POSITIONS,
+            vertices,
         )
         .unwrap();
         return buffers;
     }
 
     fn create_index_buffer(basic_context: &VulkanoContext) -> Subbuffer<[u16]> {
+        let indices = generate_cube_indices();
         let index_buffer = Buffer::from_iter(
             basic_context.memory_allocator().clone(),
             BufferCreateInfo {
@@ -290,7 +411,7 @@ impl CubePass {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            INDICES,
+            indices,
         )
         .unwrap();
         return index_buffer;
@@ -364,37 +485,5 @@ impl CubePass {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
-    }
-}
-
-impl TextInfo for CubePass {
-    fn text_items(&self) -> Vec<TextItem> {
-        let mut vertices_text = String::from("Vertices (Transformed):\n");
-        for (i, vertex) in POSITIONS.iter().enumerate() {
-            let t = self
-                .transform
-                .transform_vertex(vertex.position, self.aspect_ratio);
-            vertices_text.push_str(&format!(
-                "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]\n",
-                i,
-                t.clip_space[0],
-                t.clip_space[1],
-                t.clip_space[2],
-                t.clip_space[3],
-                t.ndc[0],
-                t.ndc[1],
-                t.ndc[2],
-            ));
-        }
-        vec![
-            TextItem {
-                text: format!("Transform state:{:#?}", self.transform),
-                place: PixelPoint { x: 0.0, y: 0.0 },
-            },
-            TextItem {
-                text: vertices_text,
-                place: PixelPoint { x: 2100.0, y: 0.0 },
-            },
-        ]
     }
 }

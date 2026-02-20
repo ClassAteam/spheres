@@ -13,6 +13,7 @@ use winit::window::WindowId;
 use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
+use crate::proc_cube_pass::ProcCubePass;
 // use crate::debug_gui::DebugRenderer;
 use crate::render::RenderContext;
 use crate::text_renderer::TextRenderer;
@@ -27,6 +28,7 @@ pub struct App {
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
     cube: Option<CubePass>,
+    proc_cube: Option<ProcCubePass>,
     text_pass: Option<TextRenderer>,
     // debug_renderer: Option<DebugRenderer>,
 }
@@ -41,6 +43,7 @@ impl App {
             rdx: None,
             render_pass: None,
             cube: None,
+            proc_cube: None,
             text_pass: None,
             // debug_renderer: None,
         }
@@ -132,11 +135,18 @@ impl App {
             extent,
             &mut cb,
         );
+        self.proc_cube.as_mut().unwrap().draw_within_pass(
+            renderer.as_ref().unwrap().aspect_ratio(),
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
 
         self.text_pass.as_mut().unwrap().draw_within_pass(
             descriptor_set_allocator.clone(),
             extent,
-            self.cube.as_ref().unwrap(),
+            // self.cube.as_ref().unwrap(),
+            &self.fps_counter,
             &mut cb,
         );
 
@@ -173,9 +183,11 @@ impl ApplicationHandler for App {
 
         self.create_render_pass();
 
-        let id = self.rdx.as_ref().unwrap().id;
-
         self.cube = Some(CubePass::new(
+            self.basic_context.bctx.as_ref(),
+            self.render_pass.as_ref().unwrap().clone(),
+        ));
+        self.proc_cube = Some(ProcCubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
         ));

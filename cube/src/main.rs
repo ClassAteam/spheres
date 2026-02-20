@@ -5,8 +5,10 @@ mod config;
 mod counter;
 mod cube_pass;
 mod debug_gui;
+mod proc_cube_pass;
 mod render;
 mod text_renderer;
+mod transform;
 mod vulkan_context;
 
 use app::App;
