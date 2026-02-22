@@ -1,15 +1,14 @@
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
-mod config;
 mod counter;
 mod cube_pass;
-mod debug_gui;
 mod proc_cube_pass;
 mod render;
 mod text_renderer;
 mod transform;
 mod vulkan_context;
+mod within_pass_renderer;
 
 use app::App;
 

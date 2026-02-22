@@ -10,47 +10,34 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::WindowId;
 
-use crate::config::AppConfig;
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
 use crate::proc_cube_pass::ProcCubePass;
-// use crate::debug_gui::DebugRenderer;
 use crate::render::RenderContext;
 use crate::text_renderer::TextRenderer;
 use crate::vulkan_context::VulkanBasicContext;
+use crate::within_pass_renderer::WithinPassRenderer;
 
 use vulkano::sync::GpuFuture;
 
 pub struct App {
-    pub config: AppConfig,
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
-    cube: Option<CubePass>,
-    proc_cube: Option<ProcCubePass>,
-    text_pass: Option<TextRenderer>,
-    // debug_renderer: Option<DebugRenderer>,
+    renderers: Vec<Box<dyn WithinPassRenderer>>,
 }
 
 impl App {
     pub fn new() -> Self {
         let context = VulkanBasicContext::new();
         App {
-            config: Default::default(),
             basic_context: Arc::new(context),
             fps_counter: FpsCounter::new(),
             rdx: None,
             render_pass: None,
-            cube: None,
-            proc_cube: None,
-            text_pass: None,
-            // debug_renderer: None,
+            renderers: Vec::new(),
         }
-    }
-
-    pub fn toggle_debug_ui(&mut self) {
-        self.config.debug_ui_enabled = !self.config.debug_ui_enabled;
     }
 
     fn create_render_pass(&mut self) {
@@ -129,26 +116,7 @@ impl App {
         cb.begin_render_pass(render_pass_begin_info, Default::default())
             .unwrap();
 
-        self.cube.as_mut().unwrap().draw_within_pass(
-            renderer.as_ref().unwrap().aspect_ratio(),
-            descriptor_set_allocator.clone(),
-            extent,
-            &mut cb,
-        );
-        self.proc_cube.as_mut().unwrap().draw_within_pass(
-            renderer.as_ref().unwrap().aspect_ratio(),
-            descriptor_set_allocator.clone(),
-            extent,
-            &mut cb,
-        );
-
-        self.text_pass.as_mut().unwrap().draw_within_pass(
-            descriptor_set_allocator.clone(),
-            extent,
-            // self.cube.as_ref().unwrap(),
-            &self.fps_counter,
-            &mut cb,
-        );
+        self.renderers[0].draw_within_pass(descriptor_set_allocator.clone(), extent, &mut cb);
 
         cb.end_render_pass(Default::default()).unwrap();
 
@@ -158,14 +126,6 @@ impl App {
         let cube_frame_ready_future = acquire_future
             .then_execute(queue.clone(), command_buffer)
             .unwrap();
-
-        // let debug_pass_ready_future = self.debug_renderer.as_mut().unwrap().draw_ui(
-        //     self.rdx.as_ref().unwrap(),
-        //     &self.fps_counter,
-        //     self.cube.as_ref().unwrap().get_transform_state(),
-        //     cube_frame_ready_future.unwrap().boxed(),
-        //     true,
-        // );
 
         self.rdx
             .as_mut()
@@ -183,33 +143,14 @@ impl ApplicationHandler for App {
 
         self.create_render_pass();
 
-        self.cube = Some(CubePass::new(
+        self.renderers.push(Box::new(CubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
-        ));
-        self.proc_cube = Some(ProcCubePass::new(
+        )));
+        self.renderers.push(Box::new(ProcCubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
-        ));
-
-        self.text_pass = Some(TextRenderer::new(
-            self.basic_context.bctx.as_ref(),
-            self.render_pass.as_ref().unwrap().clone(),
-        ));
-
-        // self.debug_renderer = if self.config.debug_ui_enabled {
-        //     Some(DebugRenderer::new(
-        //         event_loop,
-        //         self.rdx
-        //             .as_mut()
-        //             .unwrap()
-        //             .window_ctx
-        //             .get_renderer_mut(id)
-        //             .unwrap(),
-        //     ))
-        // } else {
-        //     None
-        // }
+        )));
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -223,52 +164,28 @@ impl ApplicationHandler for App {
                 self.start_new_path();
             }
 
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key: PhysicalKey::Code(key_code),
-                        state: ElementState::Pressed,
+            ref e => {
+                let handled = self
+                    .renderers
+                    .first_mut()
+                    .map(|r| r.handle_window_event(e))
+                    .unwrap_or(false);
+
+                if !handled {
+                    if let WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                state: ElementState::Pressed,
+                                ..
+                            },
                         ..
-                    },
-                ..
-            } => match key_code {
-                KeyCode::KeyL => self.cube.as_mut().unwrap().yaw_left(),
-                KeyCode::KeyH => self.cube.as_mut().unwrap().yaw_right(),
-                KeyCode::KeyJ => self.cube.as_mut().unwrap().pitch_up(),
-                KeyCode::KeyK => self.cube.as_mut().unwrap().pitch_down(),
-
-                KeyCode::KeyW => self.cube.as_mut().unwrap().move_right(),
-                KeyCode::KeyS => self.cube.as_mut().unwrap().move_left(),
-                KeyCode::KeyA => self.cube.as_mut().unwrap().move_down(),
-                KeyCode::KeyD => self.cube.as_mut().unwrap().move_up(),
-                KeyCode::KeyQ => self.cube.as_mut().unwrap().move_back(),
-                KeyCode::KeyE => self.cube.as_mut().unwrap().move_forward(),
-                KeyCode::KeyZ => self.cube.as_mut().unwrap().scale_up(),
-                KeyCode::KeyX => self.cube.as_mut().unwrap().scale_down(),
-                KeyCode::Digit1 => self.cube.as_mut().unwrap().camera_move_right(),
-                KeyCode::Digit2 => self.cube.as_mut().unwrap().camera_move_left(),
-                KeyCode::Digit3 => self.cube.as_mut().unwrap().camera_move_up(),
-                KeyCode::Digit4 => self.cube.as_mut().unwrap().camera_move_down(),
-                KeyCode::Digit5 => self.cube.as_mut().unwrap().camera_move_back(),
-                KeyCode::Digit6 => self.cube.as_mut().unwrap().camera_move_forward(),
-                KeyCode::Digit7 => self.cube.as_mut().unwrap().camera_look_right(),
-                KeyCode::Digit8 => self.cube.as_mut().unwrap().camera_look_left(),
-                KeyCode::Digit9 => self.cube.as_mut().unwrap().camera_look_up(),
-                KeyCode::Digit0 => self.cube.as_mut().unwrap().camera_look_down(),
-                KeyCode::Minus => self.cube.as_mut().unwrap().camera_look_back(),
-                KeyCode::Equal => self.cube.as_mut().unwrap().camera_look_forward(),
-                KeyCode::ArrowUp => self.cube.as_mut().unwrap().camera_up_x_up(),
-                KeyCode::ArrowDown => self.cube.as_mut().unwrap().camera_up_x_down(),
-                KeyCode::ArrowLeft => self.cube.as_mut().unwrap().camera_up_y_up(),
-                KeyCode::ArrowRight => self.cube.as_mut().unwrap().camera_up_y_down(),
-                KeyCode::PageUp => self.cube.as_mut().unwrap().camera_up_z_up(),
-                KeyCode::PageDown => self.cube.as_mut().unwrap().camera_up_z_down(),
-                KeyCode::F1 => self.toggle_debug_ui(),
-                KeyCode::Escape => event_loop.exit(),
-
-                _ => (),
-            },
-            _ => (),
+                    } = e
+                    {
+                        event_loop.exit();
+                    }
+                }
+            }
         }
     }
 

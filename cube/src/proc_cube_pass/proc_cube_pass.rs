@@ -36,7 +36,7 @@ use vulkano::{
 };
 use vulkano_util::context::VulkanoContext;
 
-use crate::transform::TransformState;
+use crate::{transform::TransformState, within_pass_renderer::WithinPassRenderer};
 
 use crate::proc_cube_pass::shaders::{
     fs,
@@ -442,15 +442,15 @@ impl ProcCubePass {
 
         subbuffer
     }
-
-    pub fn draw_within_pass(
+}
+impl WithinPassRenderer for ProcCubePass {
+    fn draw_within_pass(
         &mut self,
-        aspect_ratio: f32,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        self.aspect_ratio = aspect_ratio;
+        let aspect_ratio = extent[0] / extent[1];
         let uniform_buffer = self.update_uniform(aspect_ratio);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(

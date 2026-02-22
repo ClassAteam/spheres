@@ -35,6 +35,10 @@ use vulkano::{
     shader::ShaderStages,
 };
 use vulkano_util::context::VulkanoContext;
+use winit::{
+    event::{ElementState, KeyEvent, WindowEvent},
+    keyboard::{KeyCode, PhysicalKey},
+};
 
 use crate::{
     cube_pass::{
@@ -44,8 +48,9 @@ use crate::{
             vs::{self, Data},
         },
     },
-    text_renderer::{PixelPoint, TextInfo, TextItem},
+    text_renderer::{PixelPoint, TextInfo, TextItem, TextRenderer},
     transform::TransformState,
+    within_pass_renderer::WithinPassRenderer,
 };
 
 pub struct CubePass {
@@ -54,7 +59,7 @@ pub struct CubePass {
     index_buffer: Subbuffer<[u16]>,
     transform: TransformState,
     uniform_allocator: SubbufferAllocator,
-    aspect_ratio: f32,
+    text_renderer: TextRenderer,
 }
 
 impl CubePass {
@@ -63,13 +68,14 @@ impl CubePass {
         let vertex_buffer = Self::create_vertex_buffers(basic_context);
         let index_buffer = Self::create_index_buffer(basic_context);
         let uniform_allocator = Self::create_uniform_buffers(basic_context);
+        let text_renderer = TextRenderer::new(basic_context, render_pass.clone());
         CubePass {
             pipeline,
             vertex_buffer,
             index_buffer,
             transform: TransformState::new(),
             uniform_allocator,
-            aspect_ratio: 1.0,
+            text_renderer,
         }
     }
 
@@ -322,18 +328,49 @@ impl CubePass {
         subbuffer
     }
 
-    pub fn draw_within_pass(
+    fn text_items(&self, aspect_ratio: f32) -> Vec<TextItem> {
+        let mut vertices_text = String::from("Vertices (Transformed):\n");
+        for (i, vertex) in POSITIONS.iter().enumerate() {
+            let t = self
+                .transform
+                .transform_vertex(vertex.position, aspect_ratio);
+            vertices_text.push_str(&format!(
+                "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]\n",
+                i,
+                t.clip_space[0],
+                t.clip_space[1],
+                t.clip_space[2],
+                t.clip_space[3],
+                t.ndc[0],
+                t.ndc[1],
+                t.ndc[2],
+            ));
+        }
+        vec![
+            TextItem {
+                text: format!("Transform state:{:#?}", self.transform),
+                place: PixelPoint { x: 0.0, y: 0.0 },
+            },
+            TextItem {
+                text: vertices_text,
+                place: PixelPoint { x: 2100.0, y: 0.0 },
+            },
+        ]
+    }
+}
+
+impl WithinPassRenderer for CubePass {
+    fn draw_within_pass(
         &mut self,
-        aspect_ratio: f32,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        self.aspect_ratio = aspect_ratio;
+        let aspect_ratio = extent[0] / extent[1];
         let uniform_buffer = self.update_uniform(aspect_ratio);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
         let descriptor_set = DescriptorSet::new(
-            desc_alloc,
+            desc_alloc.clone(),
             layout,
             [WriteDescriptorSet::buffer(0, uniform_buffer)],
             [],
@@ -364,37 +401,149 @@ impl CubePass {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
-    }
-}
 
-impl TextInfo for CubePass {
-    fn text_items(&self) -> Vec<TextItem> {
-        let mut vertices_text = String::from("Vertices (Transformed):\n");
-        for (i, vertex) in POSITIONS.iter().enumerate() {
-            let t = self
-                .transform
-                .transform_vertex(vertex.position, self.aspect_ratio);
-            vertices_text.push_str(&format!(
-                "[{}] clip: [{:.3}, {:.3}, {:.3}, {:.3}] -> ndc: [{:.3}, {:.3}, {:.3}]\n",
-                i,
-                t.clip_space[0],
-                t.clip_space[1],
-                t.clip_space[2],
-                t.clip_space[3],
-                t.ndc[0],
-                t.ndc[1],
-                t.ndc[2],
-            ));
+        let text_info = self.text_items(aspect_ratio);
+
+        self.text_renderer
+            .draw_within_pass(desc_alloc.clone(), extent, text_info, cb);
+    }
+
+    fn handle_window_event(&mut self, event: &WindowEvent) -> bool {
+        if let WindowEvent::KeyboardInput {
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(key_code),
+                    state: ElementState::Pressed,
+                    ..
+                },
+            ..
+        } = event
+        {
+            match key_code {
+                KeyCode::KeyL => {
+                    self.yaw_left();
+                    true
+                }
+                KeyCode::KeyH => {
+                    self.yaw_right();
+                    true
+                }
+                KeyCode::KeyJ => {
+                    self.pitch_up();
+                    true
+                }
+                KeyCode::KeyK => {
+                    self.pitch_down();
+                    true
+                }
+                KeyCode::KeyW => {
+                    self.move_right();
+                    true
+                }
+                KeyCode::KeyS => {
+                    self.move_left();
+                    true
+                }
+                KeyCode::KeyA => {
+                    self.move_down();
+                    true
+                }
+                KeyCode::KeyD => {
+                    self.move_up();
+                    true
+                }
+                KeyCode::KeyQ => {
+                    self.move_back();
+                    true
+                }
+                KeyCode::KeyE => {
+                    self.move_forward();
+                    true
+                }
+                KeyCode::KeyZ => {
+                    self.scale_up();
+                    true
+                }
+                KeyCode::KeyX => {
+                    self.scale_down();
+                    true
+                }
+                KeyCode::Digit1 => {
+                    self.camera_move_right();
+                    true
+                }
+                KeyCode::Digit2 => {
+                    self.camera_move_left();
+                    true
+                }
+                KeyCode::Digit3 => {
+                    self.camera_move_up();
+                    true
+                }
+                KeyCode::Digit4 => {
+                    self.camera_move_down();
+                    true
+                }
+                KeyCode::Digit5 => {
+                    self.camera_move_back();
+                    true
+                }
+                KeyCode::Digit6 => {
+                    self.camera_move_forward();
+                    true
+                }
+                KeyCode::Digit7 => {
+                    self.camera_look_right();
+                    true
+                }
+                KeyCode::Digit8 => {
+                    self.camera_look_left();
+                    true
+                }
+                KeyCode::Digit9 => {
+                    self.camera_look_up();
+                    true
+                }
+                KeyCode::Digit0 => {
+                    self.camera_look_down();
+                    true
+                }
+                KeyCode::Minus => {
+                    self.camera_look_back();
+                    true
+                }
+                KeyCode::Equal => {
+                    self.camera_look_forward();
+                    true
+                }
+                KeyCode::ArrowUp => {
+                    self.camera_up_x_up();
+                    true
+                }
+                KeyCode::ArrowDown => {
+                    self.camera_up_x_down();
+                    true
+                }
+                KeyCode::ArrowLeft => {
+                    self.camera_up_y_up();
+                    true
+                }
+                KeyCode::ArrowRight => {
+                    self.camera_up_y_down();
+                    true
+                }
+                KeyCode::PageUp => {
+                    self.camera_up_z_up();
+                    true
+                }
+                KeyCode::PageDown => {
+                    self.camera_up_z_down();
+                    true
+                }
+                _ => false, // Not handled
+            }
+        } else {
+            false
         }
-        vec![
-            TextItem {
-                text: format!("Transform state:{:#?}", self.transform),
-                place: PixelPoint { x: 0.0, y: 0.0 },
-            },
-            TextItem {
-                text: vertices_text,
-                place: PixelPoint { x: 2100.0, y: 0.0 },
-            },
-        ]
     }
 }

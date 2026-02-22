@@ -243,9 +243,9 @@ impl TextRenderer {
         subbuffer
     }
 
-    fn generate_geometry(&self, text_info: &dyn TextInfo) -> TextGeometry {
+    fn generate_geometry(&self, text_items: Vec<TextItem>) -> TextGeometry {
         let mut text_geometry = TextGeometry::new();
-        for item in text_info.text_items() {
+        for item in text_items {
             text_geometry.append(self.create_text_geometry(item.text, item.place));
         }
         text_geometry
@@ -254,7 +254,7 @@ impl TextRenderer {
         &mut self,
         desc_alloc: Arc<StandardDescriptorSetAllocator>,
         extent: [f32; 2],
-        text_info: &dyn TextInfo,
+        text_info: Vec<TextItem>,
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
         let text_geometry = self.generate_geometry(text_info);
