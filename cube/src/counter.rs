@@ -52,8 +52,10 @@ impl TextInfo for FpsCounter {
 
         vec![TextItem {
             text: format!("FPS: {:.1}\nFrame Time: {:.2} ms", fps, frame_time),
-            place: PixelPoint { x: 10.0, y: 10.0 },
+            place: PixelPoint {
+                x: 3100.0,
+                y: 1380.0,
+            },
         }]
     }
 }
-

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo};
 use vulkano::format::Format;
@@ -12,10 +14,12 @@ use winit::window::WindowId;
 
 use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
+use crate::overlay_renderer::OverlayRenderer;
 use crate::proc_cube_pass::ProcCubePass;
 use crate::render::RenderContext;
 use crate::renderer_pool::RendererPool;
 use crate::vulkan_context::VulkanBasicContext;
+use crate::within_pass_renderer::WithinPassRenderer;
 
 use vulkano::sync::GpuFuture;
 
@@ -23,8 +27,9 @@ pub struct App {
     pub basic_context: Arc<VulkanBasicContext>,
     pub rdx: Option<RenderContext>,
     render_pass: Option<Arc<RenderPass>>,
-    fps_counter: FpsCounter,
-    renderer_pool: RendererPool,
+    fps_counter: Rc<RefCell<FpsCounter>>,
+    renderer_pool: Rc<RefCell<RendererPool>>,
+    overlay_renderer: Option<OverlayRenderer>,
 }
 
 impl App {
@@ -32,10 +37,11 @@ impl App {
         let context = VulkanBasicContext::new();
         App {
             basic_context: Arc::new(context),
-            fps_counter: FpsCounter::new(),
+            fps_counter: Rc::new(RefCell::new(FpsCounter::new())),
             rdx: None,
             render_pass: None,
-            renderer_pool: RendererPool::new(),
+            renderer_pool: Rc::new(RefCell::new(RendererPool::new())),
+            overlay_renderer: None,
         }
     }
 
@@ -115,7 +121,13 @@ impl App {
         cb.begin_render_pass(render_pass_begin_info, Default::default())
             .unwrap();
 
-        self.renderer_pool.active().draw_within_pass(
+        self.renderer_pool.borrow_mut().active().draw_within_pass(
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
+
+        self.overlay_renderer.as_mut().unwrap().draw_within_pass(
             descriptor_set_allocator.clone(),
             extent,
             &mut cb,
@@ -146,14 +158,27 @@ impl ApplicationHandler for App {
 
         self.create_render_pass();
 
-        self.renderer_pool.add_renderer(Box::new(CubePass::new(
+        // Initialize renderers
+        self.renderer_pool
+            .borrow_mut()
+            .add_renderer(Box::new(CubePass::new(
+                self.basic_context.bctx.as_ref(),
+                self.render_pass.as_ref().unwrap().clone(),
+            )));
+        self.renderer_pool
+            .borrow_mut()
+            .add_renderer(Box::new(ProcCubePass::new(
+                self.basic_context.bctx.as_ref(),
+                self.render_pass.as_ref().unwrap().clone(),
+            )));
+
+        let overlay = OverlayRenderer::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
-        )));
-        self.renderer_pool.add_renderer(Box::new(ProcCubePass::new(
-            self.basic_context.bctx.as_ref(),
-            self.render_pass.as_ref().unwrap().clone(),
-        )));
+            Rc::clone(&self.renderer_pool),
+            Rc::clone(&self.fps_counter),
+        );
+        self.overlay_renderer = Some(overlay);
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -163,19 +188,21 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
-                self.fps_counter.update();
+                self.fps_counter.borrow_mut().update();
                 self.start_new_path();
             }
 
             ref e => {
                 // Delegate event to active renderer
-                let handled = if !self.renderer_pool.is_empty() {
-                    self.renderer_pool.active().handle_window_event(e)
+                let handled = if !self.renderer_pool.borrow().is_empty() {
+                    self.renderer_pool
+                        .borrow_mut()
+                        .active()
+                        .handle_window_event(e)
                 } else {
                     false
                 };
 
-                // If not handled by renderer, check app-level events
                 if !handled {
                     if let WindowEvent::KeyboardInput {
                         event:

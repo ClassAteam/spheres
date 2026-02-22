@@ -14,7 +14,10 @@ pub trait WithinPassRenderer {
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     );
 
-    fn handle_window_event(&mut self, event: &WindowEvent) -> bool {
+    fn handle_window_event(&mut self, _event: &WindowEvent) -> bool {
         false // Default: ignore all events
     }
+
+    /// Returns a human-readable name for this renderer
+    fn name(&self) -> &str;
 }

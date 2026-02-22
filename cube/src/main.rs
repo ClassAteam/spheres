@@ -3,6 +3,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 mod app;
 mod counter;
 mod cube_pass;
+mod overlay_renderer;
 mod proc_cube_pass;
 mod render;
 mod renderer_pool;

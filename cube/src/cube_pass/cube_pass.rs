@@ -48,7 +48,7 @@ use crate::{
             vs::{self, Data},
         },
     },
-    text_renderer::{PixelPoint, TextInfo, TextItem, TextRenderer},
+    text_renderer::{PixelPoint, TextItem, TextRenderer},
     transform::TransformState,
     within_pass_renderer::WithinPassRenderer,
 };
@@ -77,10 +77,6 @@ impl CubePass {
             uniform_allocator,
             text_renderer,
         }
-    }
-
-    pub fn get_transform_state(&self) -> &TransformState {
-        &self.transform
     }
 
     pub fn yaw_left(&mut self) {
@@ -545,5 +541,9 @@ impl WithinPassRenderer for CubePass {
         } else {
             false
         }
+    }
+
+    fn name(&self) -> &str {
+        "CubePass (Hardcoded)"
     }
 }

@@ -32,6 +32,18 @@ impl RendererPool {
         &mut *self.renderers[self.active_index]
     }
 
+    /// Returns an immutable reference to the active renderer.
+    ///
+    /// # Panics
+    /// Panics if the pool is empty.
+    pub fn active_ref(&self) -> &dyn WithinPassRenderer {
+        &*self.renderers[self.active_index]
+    }
+
+    pub fn active_index(&self) -> usize {
+        self.active_index
+    }
+
     /// Switches the active renderer to the one at the specified index.
     ///
     /// # Returns
@@ -43,11 +55,6 @@ impl RendererPool {
         } else {
             false
         }
-    }
-
-    /// Returns the index of the currently active renderer.
-    pub fn active_index(&self) -> usize {
-        self.active_index
     }
 
     /// Returns the total number of renderers in the pool.
