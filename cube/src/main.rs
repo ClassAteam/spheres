@@ -5,6 +5,7 @@ mod counter;
 mod cube_pass;
 mod proc_cube_pass;
 mod render;
+mod renderer_pool;
 mod text_renderer;
 mod transform;
 mod vulkan_context;

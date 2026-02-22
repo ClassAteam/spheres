@@ -14,9 +14,8 @@ use crate::counter::FpsCounter;
 use crate::cube_pass::CubePass;
 use crate::proc_cube_pass::ProcCubePass;
 use crate::render::RenderContext;
-use crate::text_renderer::TextRenderer;
+use crate::renderer_pool::RendererPool;
 use crate::vulkan_context::VulkanBasicContext;
-use crate::within_pass_renderer::WithinPassRenderer;
 
 use vulkano::sync::GpuFuture;
 
@@ -25,7 +24,7 @@ pub struct App {
     pub rdx: Option<RenderContext>,
     render_pass: Option<Arc<RenderPass>>,
     fps_counter: FpsCounter,
-    renderers: Vec<Box<dyn WithinPassRenderer>>,
+    renderer_pool: RendererPool,
 }
 
 impl App {
@@ -36,7 +35,7 @@ impl App {
             fps_counter: FpsCounter::new(),
             rdx: None,
             render_pass: None,
-            renderers: Vec::new(),
+            renderer_pool: RendererPool::new(),
         }
     }
 
@@ -116,7 +115,11 @@ impl App {
         cb.begin_render_pass(render_pass_begin_info, Default::default())
             .unwrap();
 
-        self.renderers[0].draw_within_pass(descriptor_set_allocator.clone(), extent, &mut cb);
+        self.renderer_pool.active().draw_within_pass(
+            descriptor_set_allocator.clone(),
+            extent,
+            &mut cb,
+        );
 
         cb.end_render_pass(Default::default()).unwrap();
 
@@ -143,11 +146,11 @@ impl ApplicationHandler for App {
 
         self.create_render_pass();
 
-        self.renderers.push(Box::new(CubePass::new(
+        self.renderer_pool.add_renderer(Box::new(CubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
         )));
-        self.renderers.push(Box::new(ProcCubePass::new(
+        self.renderer_pool.add_renderer(Box::new(ProcCubePass::new(
             self.basic_context.bctx.as_ref(),
             self.render_pass.as_ref().unwrap().clone(),
         )));
@@ -165,12 +168,14 @@ impl ApplicationHandler for App {
             }
 
             ref e => {
-                let handled = self
-                    .renderers
-                    .first_mut()
-                    .map(|r| r.handle_window_event(e))
-                    .unwrap_or(false);
+                // Delegate event to active renderer
+                let handled = if !self.renderer_pool.is_empty() {
+                    self.renderer_pool.active().handle_window_event(e)
+                } else {
+                    false
+                };
 
+                // If not handled by renderer, check app-level events
                 if !handled {
                     if let WindowEvent::KeyboardInput {
                         event:
