@@ -39,6 +39,7 @@ use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 use crate::{
+    proc_cube_pass::cube_geometry::CubeGeometry,
     text_renderer::{PixelPoint, TextItem, TextRenderer},
     transform::TransformState,
     within_pass_renderer::WithinPassRenderer,
@@ -58,118 +59,6 @@ pub struct Position {
     pub color: [f32; 3],
 }
 
-/// Face orientation for procedural cube generation
-#[derive(Debug, Clone, Copy)]
-enum Face {
-    Back,   // -Z
-    Front,  // +Z
-    Left,   // -X
-    Right,  // +X
-    Bottom, // +Y
-    Top,    // -Y
-}
-
-impl Face {
-    fn vertices(&self) -> [[f32; 3]; 4] {
-        match self {
-            Face::Back => [
-                [-1.0, 1.0, -1.0],
-                [1.0, 1.0, -1.0],
-                [1.0, -1.0, -1.0],
-                [-1.0, -1.0, -1.0],
-            ],
-            Face::Front => [
-                [-1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0],
-                [1.0, -1.0, 1.0],
-                [-1.0, -1.0, 1.0],
-            ],
-            Face::Left => [
-                [-1.0, 1.0, -1.0],
-                [-1.0, -1.0, -1.0],
-                [-1.0, -1.0, 1.0],
-                [-1.0, 1.0, 1.0],
-            ],
-            Face::Right => [
-                [1.0, 1.0, -1.0],
-                [1.0, 1.0, 1.0],
-                [1.0, -1.0, 1.0],
-                [1.0, -1.0, -1.0],
-            ],
-            Face::Bottom => [
-                [-1.0, 1.0, -1.0],
-                [-1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0],
-                [1.0, 1.0, -1.0],
-            ],
-            Face::Top => [
-                [-1.0, -1.0, -1.0],
-                [1.0, -1.0, -1.0],
-                [1.0, -1.0, 1.0],
-                [-1.0, -1.0, 1.0],
-            ],
-        }
-    }
-
-    fn color(&self) -> [f32; 3] {
-        match self {
-            Face::Back => [1.0, 0.0, 0.0],   // Red
-            Face::Front => [0.0, 1.0, 0.0],  // Green
-            Face::Left => [0.0, 0.0, 1.0],   // Blue
-            Face::Right => [1.0, 1.0, 0.0],  // Yellow
-            Face::Bottom => [1.0, 0.0, 1.0], // Magenta
-            Face::Top => [0.0, 1.0, 1.0],    // Cyan
-        }
-    }
-}
-
-/// Generate procedural cube vertices
-fn generate_cube_vertices() -> Vec<Position> {
-    let faces = [
-        Face::Back,
-        Face::Front,
-        Face::Left,
-        Face::Right,
-        Face::Bottom,
-        Face::Top,
-    ];
-
-    let mut vertices = Vec::with_capacity(24); // 6 faces × 4 vertices
-
-    for face in &faces {
-        let color = face.color();
-        let positions = face.vertices();
-
-        for position in &positions {
-            vertices.push(Position {
-                position: *position,
-                color,
-            });
-        }
-    }
-
-    vertices
-}
-
-/// Generate procedural cube indices
-fn generate_cube_indices() -> Vec<u16> {
-    // Match the exact index pattern from the working CubePass
-    vec![
-        // Back face (standard pattern)
-        0, 1, 2, 2, 3, 0,
-        // Front face (flipped pattern for opposite-facing face)
-        4, 6, 5, 4, 7, 6,
-        // Left face (standard pattern)
-        8, 9, 10, 10, 11, 8,
-        // Right face (standard pattern)
-        12, 13, 14, 14, 15, 12,
-        // Bottom face (standard pattern)
-        16, 17, 18, 18, 19, 16,
-        // Top face (standard pattern)
-        20, 21, 22, 22, 23, 20,
-    ]
-}
-
 pub struct ProcCubePass {
     pipeline: Arc<GraphicsPipeline>,
     vertex_buffer: Subbuffer<[Position]>,
@@ -183,8 +72,9 @@ pub struct ProcCubePass {
 impl ProcCubePass {
     pub fn new(basic_context: &VulkanoContext, render_pass: Arc<RenderPass>) -> Self {
         let pipeline = Self::create_graphics_pipeline(basic_context, render_pass.clone());
-        let vertex_buffer = Self::create_vertex_buffers(basic_context);
-        let index_buffer = Self::create_index_buffer(basic_context);
+        let geometry = CubeGeometry::new();
+        let vertex_buffer = Self::create_vertex_buffers(&geometry, basic_context);
+        let index_buffer = Self::create_index_buffer(&geometry, basic_context);
         let uniform_allocator = Self::create_uniform_buffers(basic_context);
         ProcCubePass {
             pipeline,
@@ -259,7 +149,7 @@ impl ProcCubePass {
         let create_info = GraphicsPipelineCreateInfo {
             stages: stages,
             rasterization_state: Some(RasterizationState {
-                cull_mode: CullMode::Back,
+                cull_mode: CullMode::None,
                 front_face: FrontFace::Clockwise,
                 ..Default::default()
             }),
@@ -286,8 +176,11 @@ impl ProcCubePass {
         GraphicsPipeline::new(basic_context.device().clone(), None, create_info).unwrap()
     }
 
-    fn create_vertex_buffers(basic_context: &VulkanoContext) -> Subbuffer<[Position]> {
-        let vertices = generate_cube_vertices();
+    fn create_vertex_buffers(
+        geometry: &CubeGeometry,
+        basic_context: &VulkanoContext,
+    ) -> Subbuffer<[Position]> {
+        let vertices = geometry.generate_cube_vertices();
         let buffers = Buffer::from_iter(
             basic_context.memory_allocator().clone(),
             BufferCreateInfo {
@@ -305,8 +198,11 @@ impl ProcCubePass {
         return buffers;
     }
 
-    fn create_index_buffer(basic_context: &VulkanoContext) -> Subbuffer<[u16]> {
-        let indices = generate_cube_indices();
+    fn create_index_buffer(
+        geometry: &CubeGeometry,
+        basic_context: &VulkanoContext,
+    ) -> Subbuffer<[u16]> {
+        let indices = geometry.generate_indices();
         let index_buffer = Buffer::from_iter(
             basic_context.memory_allocator().clone(),
             BufferCreateInfo {
