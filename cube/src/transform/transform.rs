@@ -31,6 +31,27 @@ impl TransformState {
 impl TransformState {
     pub fn rotate_model(&mut self, delta: Vec3) {
         self.model.rotation += delta;
+        // Wrap angles to [-π, π) to prevent f32 precision loss over time
+        self.model.rotation = Self::normalize_angles(self.model.rotation);
+    }
+
+    fn normalize_angles(angles: Vec3) -> Vec3 {
+        const TAU: f32 = std::f32::consts::TAU; // 2π
+        Vec3::new(
+            Self::wrap_angle(angles.x, TAU),
+            Self::wrap_angle(angles.y, TAU),
+            Self::wrap_angle(angles.z, TAU),
+        )
+    }
+
+    fn wrap_angle(angle: f32, tau: f32) -> f32 {
+        // Wrap to [-π, π) range
+        let wrapped = angle.rem_euclid(tau);
+        if wrapped > std::f32::consts::PI {
+            wrapped - tau
+        } else {
+            wrapped
+        }
     }
     pub fn translate_model(&mut self, delta: Vec3) {
         self.model.translation += delta;
