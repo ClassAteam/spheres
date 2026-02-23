@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use glam::Vec3;
 use vulkano::{
     buffer::{
         Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer,
@@ -36,9 +37,12 @@ use vulkano::{
 use vulkano_util::context::VulkanoContext;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use glam::Vec3;
 
-use crate::{transform::TransformState, within_pass_renderer::WithinPassRenderer};
+use crate::{
+    text_renderer::{PixelPoint, TextItem, TextRenderer},
+    transform::TransformState,
+    within_pass_renderer::WithinPassRenderer,
+};
 
 use crate::proc_cube_pass::shaders::{
     fs,
@@ -69,40 +73,40 @@ impl Face {
     fn vertices(&self) -> [[f32; 3]; 4] {
         match self {
             Face::Back => [
-                [-1.0, 1.0, -1.0],  // Top-left
-                [1.0, 1.0, -1.0],   // Top-right
-                [1.0, -1.0, -1.0],  // Bottom-right
-                [-1.0, -1.0, -1.0], // Bottom-left
+                [-1.0, 1.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [1.0, -1.0, -1.0],
+                [-1.0, -1.0, -1.0],
             ],
             Face::Front => [
-                [-1.0, 1.0, 1.0],  // Top-left
-                [1.0, 1.0, 1.0],   // Top-right
-                [1.0, -1.0, 1.0],  // Bottom-right
-                [-1.0, -1.0, 1.0], // Bottom-left
+                [-1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [-1.0, -1.0, 1.0],
             ],
             Face::Left => [
-                [-1.0, 1.0, -1.0],  // Top-back
-                [-1.0, -1.0, -1.0], // Bottom-back
-                [-1.0, -1.0, 1.0],  // Bottom-front
-                [-1.0, 1.0, 1.0],   // Top-front
+                [-1.0, 1.0, -1.0],
+                [-1.0, -1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [-1.0, 1.0, 1.0],
             ],
             Face::Right => [
-                [1.0, 1.0, -1.0],  // Top-back
-                [1.0, 1.0, 1.0],   // Top-front
-                [1.0, -1.0, 1.0],  // Bottom-front
-                [1.0, -1.0, -1.0], // Bottom-back
+                [1.0, 1.0, -1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [1.0, -1.0, -1.0],
             ],
             Face::Bottom => [
-                [-1.0, 1.0, -1.0], // Back-left
-                [-1.0, 1.0, 1.0],  // Front-left
-                [1.0, 1.0, 1.0],   // Front-right
-                [1.0, 1.0, -1.0],  // Back-right
+                [-1.0, 1.0, -1.0],
+                [-1.0, 1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [1.0, 1.0, -1.0],
             ],
             Face::Top => [
-                [-1.0, -1.0, -1.0], // Back-left
-                [1.0, -1.0, -1.0],  // Back-right
-                [1.0, -1.0, 1.0],   // Front-right
-                [-1.0, -1.0, 1.0],  // Front-left
+                [-1.0, -1.0, -1.0],
+                [1.0, -1.0, -1.0],
+                [1.0, -1.0, 1.0],
+                [-1.0, -1.0, 1.0],
             ],
         }
     }
@@ -149,24 +153,21 @@ fn generate_cube_vertices() -> Vec<Position> {
 
 /// Generate procedural cube indices
 fn generate_cube_indices() -> Vec<u16> {
-    let mut indices = Vec::with_capacity(36); // 6 faces × 2 triangles × 3 vertices
-
-    // Generate indices for all 6 faces
-    for face_index in 0..6 {
-        let base = (face_index * 4) as u16;
-
-        // First triangle (0, 1, 2)
-        indices.push(base);
-        indices.push(base + 1);
-        indices.push(base + 2);
-
-        // Second triangle (2, 3, 0)
-        indices.push(base + 2);
-        indices.push(base + 3);
-        indices.push(base);
-    }
-
-    indices
+    // Match the exact index pattern from the working CubePass
+    vec![
+        // Back face (standard pattern)
+        0, 1, 2, 2, 3, 0,
+        // Front face (flipped pattern for opposite-facing face)
+        4, 6, 5, 4, 7, 6,
+        // Left face (standard pattern)
+        8, 9, 10, 10, 11, 8,
+        // Right face (standard pattern)
+        12, 13, 14, 14, 15, 12,
+        // Bottom face (standard pattern)
+        16, 17, 18, 18, 19, 16,
+        // Top face (standard pattern)
+        20, 21, 22, 22, 23, 20,
+    ]
 }
 
 pub struct ProcCubePass {
@@ -175,6 +176,7 @@ pub struct ProcCubePass {
     index_buffer: Subbuffer<[u16]>,
     transform: TransformState,
     uniform_allocator: SubbufferAllocator,
+    text_renderer: TextRenderer,
     auto_rotate: bool,
 }
 
@@ -190,7 +192,8 @@ impl ProcCubePass {
             index_buffer,
             transform: TransformState::new(),
             uniform_allocator,
-            auto_rotate: false,
+            auto_rotate: true,
+            text_renderer: TextRenderer::new(basic_context, render_pass),
         }
     }
 
@@ -346,6 +349,13 @@ impl ProcCubePass {
 
         subbuffer
     }
+
+    fn text_items(&self) -> Vec<TextItem> {
+        vec![TextItem {
+            text: format!("{:#?}", self.transform),
+            place: PixelPoint { x: 0.0, y: 0.0 },
+        }]
+    }
 }
 impl WithinPassRenderer for ProcCubePass {
     fn draw_within_pass(
@@ -354,10 +364,14 @@ impl WithinPassRenderer for ProcCubePass {
         extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
-        // Apply auto-rotation if enabled
         if self.auto_rotate {
             self.transform.rotate_model(Vec3::new(0.005, 0.01, 0.0));
         }
+
+        let text_info = self.text_items();
+
+        self.text_renderer
+            .draw_within_pass(desc_alloc.clone(), extent, text_info, cb);
 
         let aspect_ratio = extent[0] / extent[1];
         let uniform_buffer = self.update_uniform(aspect_ratio);
@@ -398,18 +412,22 @@ impl WithinPassRenderer for ProcCubePass {
 
     fn handle_window_event(&mut self, event: &WindowEvent) -> bool {
         if let WindowEvent::KeyboardInput {
-            event: KeyEvent {
-                physical_key: PhysicalKey::Code(key_code),
-                state: ElementState::Pressed,
-                ..
-            },
+            event:
+                KeyEvent {
+                    physical_key: PhysicalKey::Code(key_code),
+                    state: ElementState::Pressed,
+                    ..
+                },
             ..
         } = event
         {
             match key_code {
                 KeyCode::KeyR => {
                     self.auto_rotate = !self.auto_rotate;
-                    println!("Auto-rotation: {}", if self.auto_rotate { "ON" } else { "OFF" });
+                    println!(
+                        "Auto-rotation: {}",
+                        if self.auto_rotate { "ON" } else { "OFF" }
+                    );
                     true
                 }
                 _ => false,
