@@ -207,14 +207,25 @@ impl ApplicationHandler for App {
                     if let WindowEvent::KeyboardInput {
                         event:
                             KeyEvent {
-                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                physical_key: PhysicalKey::Code(key_code),
                                 state: ElementState::Pressed,
                                 ..
                             },
                         ..
                     } = e
                     {
-                        event_loop.exit();
+                        match key_code {
+                            KeyCode::Escape => {
+                                event_loop.exit();
+                            }
+                            KeyCode::Tab => {
+                                let mut pool = self.renderer_pool.borrow_mut();
+                                let next_index = (pool.active_index() + 1) % pool.len();
+                                pool.switch_active(next_index);
+                                println!("Switched to: {}", pool.active_ref().name());
+                            }
+                            _ => {}
+                        }
                     }
                 }
             }

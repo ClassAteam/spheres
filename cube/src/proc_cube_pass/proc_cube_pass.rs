@@ -34,6 +34,9 @@ use vulkano::{
     shader::ShaderStages,
 };
 use vulkano_util::context::VulkanoContext;
+use winit::event::{ElementState, KeyEvent, WindowEvent};
+use winit::keyboard::{KeyCode, PhysicalKey};
+use glam::Vec3;
 
 use crate::{transform::TransformState, within_pass_renderer::WithinPassRenderer};
 
@@ -172,6 +175,7 @@ pub struct ProcCubePass {
     index_buffer: Subbuffer<[u16]>,
     transform: TransformState,
     uniform_allocator: SubbufferAllocator,
+    auto_rotate: bool,
 }
 
 impl ProcCubePass {
@@ -186,6 +190,7 @@ impl ProcCubePass {
             index_buffer,
             transform: TransformState::new(),
             uniform_allocator,
+            auto_rotate: false,
         }
     }
 
@@ -349,6 +354,11 @@ impl WithinPassRenderer for ProcCubePass {
         extent: [f32; 2],
         cb: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) {
+        // Apply auto-rotation if enabled
+        if self.auto_rotate {
+            self.transform.rotate_model(Vec3::new(0.005, 0.01, 0.0));
+        }
+
         let aspect_ratio = extent[0] / extent[1];
         let uniform_buffer = self.update_uniform(aspect_ratio);
         let layout = self.pipeline.layout().set_layouts()[0].clone();
@@ -384,6 +394,29 @@ impl WithinPassRenderer for ProcCubePass {
         cb.bind_index_buffer(self.index_buffer.clone()).unwrap();
 
         unsafe { cb.draw_indexed(self.index_buffer.len() as u32, 1, 0, 0, 0) }.unwrap();
+    }
+
+    fn handle_window_event(&mut self, event: &WindowEvent) -> bool {
+        if let WindowEvent::KeyboardInput {
+            event: KeyEvent {
+                physical_key: PhysicalKey::Code(key_code),
+                state: ElementState::Pressed,
+                ..
+            },
+            ..
+        } = event
+        {
+            match key_code {
+                KeyCode::KeyR => {
+                    self.auto_rotate = !self.auto_rotate;
+                    println!("Auto-rotation: {}", if self.auto_rotate { "ON" } else { "OFF" });
+                    true
+                }
+                _ => false,
+            }
+        } else {
+            false
+        }
     }
 
     fn name(&self) -> &str {

@@ -344,7 +344,7 @@ impl CubePass {
         }
         vec![
             TextItem {
-                text: format!("Transform state:{:#?}", self.transform),
+                text: format!("{:#?}", self.transform),
                 place: PixelPoint { x: 0.0, y: 0.0 },
             },
             TextItem {
