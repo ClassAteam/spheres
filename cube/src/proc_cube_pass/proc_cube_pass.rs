@@ -67,6 +67,7 @@ pub struct ProcCubePass {
     uniform_allocator: SubbufferAllocator,
     text_renderer: TextRenderer,
     auto_rotate: bool,
+    auto_translate: bool,
 }
 
 impl ProcCubePass {
@@ -83,6 +84,7 @@ impl ProcCubePass {
             transform: TransformState::new(),
             uniform_allocator,
             auto_rotate: true,
+            auto_translate: false,
             text_renderer: TextRenderer::new(basic_context, render_pass),
         }
     }
@@ -323,6 +325,14 @@ impl WithinPassRenderer for ProcCubePass {
                     println!(
                         "Auto-rotation: {}",
                         if self.auto_rotate { "ON" } else { "OFF" }
+                    );
+                    true
+                }
+                KeyCode::KeyT => {
+                    self.auto_translate = !self.auto_translate;
+                    println!(
+                        "Auto-translation: {}",
+                        if self.auto_translate { "ON" } else { "OFF" }
                     );
                     true
                 }

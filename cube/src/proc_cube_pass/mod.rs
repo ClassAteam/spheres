@@ -1,4 +1,5 @@
 mod cube_geometry;
+mod cube_movements;
 mod proc_cube_pass;
 mod shaders;
 
